@@ -1,0 +1,90 @@
+/*
+* Copyright (c) 2026 The FreeBSD Foundation
+*
+* SPDX-License-Identifier: BSD-2-Clause
+*
+* This software was developed by Benjamin Stürz <benni@stuerz.xyz>
+* under sponsorship from the FreeBSD Foundation.
+*/
+
+#include <sys/param.h>
+#include <sys/mount.h>
+#include <sys/disklabel.h>
+#include <sys/stat.h>
+
+#include <errno.h>
+#include <fcntl.h>
+#include <fstab.h>
+#include <paths.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#include <libext2fs.h>
+
+int ext2fs_disk_open(struct ext2fsd *disk, const char *name)
+{
+	struct stat	 st;
+	struct statfs	 sfs;
+	struct fstab	*fs;
+	const char	*oname;
+	char		 dev[MAXPATHLEN];
+	int		 fd, ret;
+
+	ERROR(disk, NULL);
+
+	oname = name;
+again:	if ((ret = stat(name, &st)) < 0) {
+		if (*name != '/') {
+			snprintf(dev, sizeof(dev), "%s%s", _PATH_DEV, name);
+			name = dev;
+			goto again;
+		}
+		/*
+		 * The given object doesn't exist, but don't panic just yet -
+		 * it may be still mount point listed in /etc/fstab, but without
+		 * existing corresponding directory.
+		 */
+		name = oname;
+	}
+
+	if (ret >= 0 && S_ISREG(st.st_mode)) {
+		/* Possibly a disk image, give it a try.  */
+		;
+	} else if (ret >= 0 && S_ISCHR(st.st_mode)) {
+		/* This is what we need, do nothing. */
+		;
+	} else if ((fs = getfsfile(name)) != NULL) {
+		/*
+		 * The given mount point is listed in /etc/fstab.
+		 * It is possible that someone unmounted file system by hand
+		 * and different file system is mounted on this mount point,
+		 * but we still prefer /etc/fstab entry, because on the other
+		 * hand, there could be /etc/fstab entry for this mount
+		 * point, but file system is not mounted yet (eg. noauto) and
+		 * statfs(2) will point us at different file system.
+		 */
+		name = fs->fs_spec;
+	} else if (ret >= 0 && S_ISDIR(st.st_mode)) {
+		/*
+		 * The mount point is not listed in /etc/fstab, so it may be
+		 * file system mounted by hand.
+		 */
+		if (statfs(name, &sfs) < 0) {
+			ERROR(disk, "could not find special device");
+			return (-1);
+		}
+		strlcpy(dev, sfs.f_mntfromname, sizeof(dev));
+		name = dev;
+	} else {
+		ERROR(disk, "could not find special device");
+		return (-1);
+	}
+}
+
+int ext2fs_disk_close(struct ext2fsd *disk)
+{
+
+}
+
