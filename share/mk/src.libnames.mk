@@ -154,6 +154,7 @@ _LIBRARIES=	\
 		efivar \
 		elf \
 		execinfo \
+		ext2fs \
 		fetch \
 		formw \
 		geom \
