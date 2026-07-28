@@ -23,7 +23,12 @@
 
 #include <libext2fs.h>
 
-int ext2fs_disk_open(struct ext2fsd *disk, const char *name)
+/* Internally, track the 'name' value, it's ours. */
+#define	MINE_NAME	0x01
+/* Track if its fd points to a writable device. */
+#define	MINE_WRITE	0x02
+
+int ext2fs_disk_fillout_blank(struct ext2fsd *disk, const char *name)
 {
 	struct stat	 st;
 	struct statfs	 sfs;
@@ -73,18 +78,67 @@ again:	if ((ret = stat(name, &st)) < 0) {
 		 */
 		if (statfs(name, &sfs) < 0) {
 			ERROR(disk, "could not find special device");
-			return (-1);
+			return -1;
 		}
 		strlcpy(dev, sfs.f_mntfromname, sizeof(dev));
 		name = dev;
 	} else {
 		ERROR(disk, "could not find special device");
-		return (-1);
+		return -1;
 	}
+
+	fd = open(name, O_RDONLY);
+	if (fd == -1) {
+		ERROR(disk, "could not open special device");
+		return -1;
+	}
+
+	disk->d_error = NULL;
+	disk->d_fd = fd;
+	disk->d_mine = 0;
+
+	if (oname != name) {
+		name = strdup(name);
+		if (name == NULL) {
+			ERROR(disk, "could not allocate memory for disk name");
+			return -1;
+		}
+		disk->d_mine |= MINE_NAME;
+	}
+	disk->d_name = name;
+}
+
+int ext2fs_disk_fillout(struct ext2fsd *disk, const char *name)
+{
+	if (ext2fs_disk_fillout_blank(disk, name) == -1)
+		return -1;
+
+	if (ext2fs_sbread(disk) == -1) {
+		ERROR(disk, "could not read superblock to fill out disk");
+		ext2fs_disk_close(disk);
+		return -1;
+	}
+
+	return 0;
 }
 
 int ext2fs_disk_close(struct ext2fsd *disk)
 {
+	ERROR(disk, NULL);
+	close(disk->d_fd);
+	disk->d_fd = -1;
 
+	if (disk->d_mine & MINE_NAME) {
+		free((char *)(uintptr_t)disk->d_name);
+		disk->d_name = NULL;
+	}
+
+	// if (disk->d_si != NULL) {
+	// 	free(disk->d_si->si_csp);
+	// 	free(disk->d_si);
+	// 	disk->d_si = NULL;
+	// }
+
+	return 0;
 }
 

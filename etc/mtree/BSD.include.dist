@@ -285,6 +285,8 @@
         ..
         devfs
         ..
+	ext2fs
+	..
         fdescfs
         ..
         msdosfs

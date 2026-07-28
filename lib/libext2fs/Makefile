@@ -5,7 +5,8 @@ LIB =		ext2fs
 SHLIBDIR ?=	/lib
 SHLIB_MAJOR =	1
 
-SRCS =		type.c
+SRCS =		type.c	\
+		sblock.c
 INCS =		libext2fs.h
 MAN =
 
