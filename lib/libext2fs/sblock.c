@@ -19,6 +19,12 @@
 
 static int handle_disk_read(struct ext2fsd *, struct ext2fs *, int);
 
+/* Dual-mode superblock reader shared with the kernel ext2fs driver. */
+struct malloc_type;
+int	ext2_sbget(void *, struct ext2fs **, off_t, int, struct malloc_type *,
+	    int (*)(void *, off_t, void **, int));
+static int	ext2_use_pread(void *, off_t, void **, int);
+
 /*
  * Read the standard superblock.
  *
@@ -102,32 +108,35 @@ handle_disk_read(struct ext2fsd *disk, struct ext2fs *fs, int error)
 /*
  * Low-level superblock read for userland consumers.
  *
- * Reads the ext2 superblock from byte offset `sblockloc` (normally
- * SBLOCKOFFSET, 1024) on the device referred to by `devfd`, allocates a
- * buffer holding it and returns it in *fsp.  Returns 0 on success or one
- * of EIO (short read), ENOENT (bad magic) or ENOSPC (allocation failure).
+ * Thin wrapper around the dual-mode ext2_sbget() shared with the kernel
+ * ext2fs driver, supplying the userland I/O backend (ext2_use_pread).
  */
 int
 ext2fs_sbget(int devfd, struct ext2fs **fsp, off_t sblockloc, int flags)
 {
-	struct ext2fs *fs;
 
-	(void)flags;
+	return (ext2_sbget(&devfd, fsp, sblockloc, flags, NULL, ext2_use_pread));
+}
 
-	fs = malloc(SBLOCKSIZE);
-	if (fs == NULL)
+/*
+ * Allocate a buffer of "size" bytes and read into it from byte offset "loc"
+ * on the device whose descriptor is pointed at by "devfd".  Used as the
+ * read backend for ext2_sbget() in userland, analogous to libufs's
+ * use_pread().
+ */
+static int
+ext2_use_pread(void *devfd, off_t loc, void **bufp, int size)
+{
+	int fd;
+
+	fd = *(int *)devfd;
+	*bufp = malloc(size);
+	if (*bufp == NULL)
 		return (ENOSPC);
-
-	if (pread(devfd, fs, SBLOCKSIZE, sblockloc) != SBLOCKSIZE) {
-		free(fs);
+	if (pread(fd, *bufp, size, loc) != size) {
+		free(*bufp);
+		*bufp = NULL;
 		return (EIO);
 	}
-
-	if (le16toh(fs->e2fs_magic) != E2FS_MAGIC) {
-		free(fs);
-		return (ENOENT);
-	}
-
-	*fsp = fs;
 	return (0);
 }
