@@ -57,7 +57,7 @@ again:	if ((ret = stat(name, &st)) < 0) {
 	if (ret >= 0 && S_ISREG(st.st_mode)) {
 		/* Possibly a disk image, give it a try.  */
 		;
-	} else if (ret >= 0 && S_ISCHR(st.st_mode)) {
+	} else if (ret >= 0 && (S_ISCHR(st.st_mode) || S_ISBLK(st.st_mode))) {
 		/* This is what we need, do nothing. */
 		;
 	} else if ((fs = getfsfile(name)) != NULL) {
@@ -96,6 +96,9 @@ again:	if ((ret = stat(name, &st)) < 0) {
 	disk->d_error = NULL;
 	disk->d_fd = fd;
 	disk->d_mine = 0;
+	disk->d_version = 0;
+	disk->d_sblockloc = SBLOCKOFFSET;
+	disk->d_lookupflags = 0;
 
 	if (oname != name) {
 		name = strdup(name);
@@ -106,6 +109,8 @@ again:	if ((ret = stat(name, &st)) < 0) {
 		disk->d_mine |= MINE_NAME;
 	}
 	disk->d_name = name;
+
+	return 0;
 }
 
 int ext2fs_disk_fillout(struct ext2fsd *disk, const char *name)
