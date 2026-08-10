@@ -13,18 +13,35 @@
 .Nd dump ext2 file system information
 .Sh SYNOPSIS
 .Nm
+.Op Fl f
+.Op Fl s
 .Ar filesys | device
 .Sh DESCRIPTION
 The
 .Nm
 utility prints out the ext2 super block and block group descriptor
-information for the file system or special device specified.
+information for the file system or special device specified, unless the
+.Fl f
+or
+.Fl s
+flag is given.
 The listing is very long and detailed.
 This command is useful mostly for finding out certain file system
 information such as the file system block size and the number and
 layout of block groups.
 It is the ext2 counterpart of
 .Xr dumpfs 8 .
+.Pp
+If
+.Fl f
+is specified, a sorted list of all free blocks and free block ranges, as
+represented in the block group block bitmaps, is printed.
+If the flag is specified twice, contiguous free blocks are not collapsed
+into ranges and instead printed in a simple list.
+.Pp
+If
+.Fl s
+is specified, only the super block information is printed.
 .Sh SEE ALSO
 .Xr ext2fs 4 ,
 .Xr dumpfs 8
