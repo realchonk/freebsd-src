@@ -133,6 +133,10 @@ int ext2fs_disk_close(struct ext2fsd *disk)
 	close(disk->d_fd);
 	disk->d_fd = -1;
 
+	free(disk->d_gd);
+	disk->d_gd = NULL;
+	disk->d_gcount = 0;
+
 	if (disk->d_mine & MINE_NAME) {
 		free((char *)(uintptr_t)disk->d_name);
 		disk->d_name = NULL;

@@ -30,6 +30,8 @@ struct ext2fsd {
 	int		 d_mine;	/* internal flags */
 	int		 d_fd;		/* raw device file descriptor */
 	int		 d_version;	/* 2=ext2, 3=ext3, 4=ext4 */
+	struct ext2_gd	*d_gd;		/* block group descriptor table */
+	uint32_t	 d_gcount;	/* number of block groups */
 };
 
 #define	d_fs	d_sbunion.d_fs
@@ -68,5 +70,10 @@ int ext2fs_disk_fillout_blank(struct ext2fsd *, const char *);
 int ext2fs_sbread(struct ext2fsd *);
 /* low level superblock read/write functions */
 int ext2fs_sbget(int, struct ext2fs **, off_t, int);
+
+/*
+ * group.c
+ */
+int ext2fs_gdread(struct ext2fsd *);
 
 #endif /* __LIBEXT2FS_H__ */
