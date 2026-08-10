@@ -13,6 +13,7 @@
 #include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
@@ -26,6 +27,7 @@ static const char *ext2fserr(void);
 static const char *ext2fstype(void);
 static int	dumpfs(const char *);
 static int	dumpgroups(void);
+static int	dumpfreespace(int);
 static void	dump_features(const char *, uint32_t,
 		    const struct ext2_feature *, size_t);
 static void	dump_bg_flags(uint16_t);
@@ -34,7 +36,7 @@ static void	dump_uuid(const uint8_t *);
 static int
 usage(void)
 {
-	(void)fprintf(stderr, "usage: dumpfs_ext2fs filesys | device\n");
+	(void)fprintf(stderr, "usage: dumpfs_ext2fs [-fs] filesys | device\n");
 	return 1;
 }
 
@@ -294,14 +296,86 @@ dumpgroups(void)
 	return (0);
 }
 
+/*
+ * Ext2 block bitmaps use the opposite sense of UFS: a set bit marks a block
+ * in use, so free blocks are the clear bits.
+ */
+static int
+dumpfreespace(int fflag)
+{
+	struct ext2fs *fs;
+	uint64_t bcount, base;
+	uint32_t bsize, bpg, first_dblock, g, i, nblks;
+	int has64;
+	char *bitmap;
+
+	if (ext2fs_gdread(&disk) == -1) {
+		printf("\n%s\n", ext2fserr());
+		return (1);
+	}
+
+	fs = &disk.d_fs;
+	bsize = 1024u << le32toh(fs->e2fs_log_bsize);
+	bpg = le32toh(fs->e2fs_bpg);
+	first_dblock = le32toh(fs->e2fs_first_dblock);
+	has64 = le32toh(fs->e2fs_features_incompat) & EXT2F_INCOMPAT_64BIT;
+	bcount = le32toh(fs->e2fs_bcount);
+	if (has64)
+		bcount |= (uint64_t)le32toh(fs->e4fs_bcount_hi) << 32;
+
+	bitmap = malloc(bsize);
+	if (bitmap == NULL) {
+		printf("\n%s\n", strerror(errno));
+		return (1);
+	}
+
+	for (g = 0; g < disk.d_gcount; g++) {
+		base = first_dblock + (uint64_t)g * bpg;
+		if (base >= bcount)
+			break;
+		nblks = bpg;
+		if (base + nblks > bcount)
+			nblks = (uint32_t)(bcount - base);
+		if (ext2fs_bread(&disk, gd_b_bitmap(&disk.d_gd[g]), bitmap,
+		    bsize) != (ssize_t)bsize) {
+			printf("\nblock group %u: %s\n", g, strerror(errno));
+			free(bitmap);
+			return (1);
+		}
+		for (i = 0; i < nblks; i++) {
+			if (!isclr(bitmap, i))
+				continue;
+			printf("%ju", (uintmax_t)(base + i));
+			if (fflag < 2) {
+				uint32_t j = i;
+
+				while (i + 1 < nblks && isclr(bitmap, i + 1))
+					i++;
+				if (i != j)
+					printf("-%ju", (uintmax_t)(base + i));
+			}
+			printf("\n");
+		}
+	}
+	free(bitmap);
+	return (0);
+}
+
 int
 main (int argc, char *argv[])
 {
 	const char *name;
-	int option, eval = 0;
+	int option, dosb, dofreespace, eval;
 
-	while ((option = getopt(argc, argv, "")) != -1) {
+	dosb = dofreespace = eval = 0;
+	while ((option = getopt(argc, argv, "fs")) != -1) {
 		switch (option) {
+		case 'f':
+			dofreespace++;
+			break;
+		case 's':
+			dosb = 1;
+			break;
 		default:
 			return usage();
 		}
@@ -327,8 +401,13 @@ main (int argc, char *argv[])
 			continue;
 		}
 
-		eval |= dumpfs(name);
-		eval |= dumpgroups();
+		if (dofreespace)
+			eval |= dumpfreespace(dofreespace);
+		else {
+			eval |= dumpfs(name);
+			if (dosb == 0)
+				eval |= dumpgroups();
+		}
 		ext2fs_disk_close(&disk);
 	}
 	return eval;
