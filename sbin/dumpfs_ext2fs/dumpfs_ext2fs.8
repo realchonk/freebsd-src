@@ -1,19 +1,39 @@
 .\" Copyright (c) 2026 The FreeBSD Foundation
-.\" 
+.\"
 .\" SPDX-License-Identifier: BSD-2-Clause
-.\" 
+.\"
 .\" This software was developed by Benjamin Stürz <benni@stuerz.xyz>
 .\" under sponsorship from the FreeBSD Foundation.
-.Dd July 27, 2026
+.\"
+.Dd August 10, 2026
 .Dt DUMPFS_EXT2FS 8
 .Os
 .Sh NAME
 .Nm dumpfs_ext2fs
-.Nd dump ext2fs file system information
+.Nd dump ext2 file system information
 .Sh SYNOPSIS
+.Nm
+.Ar filesys | device
 .Sh DESCRIPTION
+The
+.Nm
+utility prints out the ext2 super block and block group descriptor
+information for the file system or special device specified.
+The listing is very long and detailed.
+This command is useful mostly for finding out certain file system
+information such as the file system block size and the number and
+layout of block groups.
+It is the ext2 counterpart of
+.Xr dumpfs 8 .
 .Sh SEE ALSO
 .Xr ext2fs 4 ,
 .Xr dumpfs 8
-.\" TODO: more x-refs
 .Sh HISTORY
+The
+.Nm
+utility is currently under development and has not yet been released.
+.Sh AUTHORS
+.An -nosplit
+This software was developed by
+.An Benjamin Stürz Aq Mt benni@stuerz.xyz
+under sponsorship from the FreeBSD Foundation.
