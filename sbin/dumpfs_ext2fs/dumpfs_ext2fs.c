@@ -25,8 +25,10 @@ static int	usage(void);
 static const char *ext2fserr(void);
 static const char *ext2fstype(void);
 static int	dumpfs(const char *);
+static int	dumpgroups(void);
 static void	dump_features(const char *, uint32_t,
 		    const struct ext2_feature *, size_t);
+static void	dump_bg_flags(uint16_t);
 static void	dump_uuid(const uint8_t *);
 
 static int
@@ -140,6 +142,158 @@ dump_uuid(const uint8_t *u)
 	    u[6], u[7], u[8], u[9], u[10], u[11], u[12], u[13], u[14], u[15]);
 }
 
+/*
+ * The block group descriptor stores split low/high halves of each value so
+ * the same struct serves 32-bit and 64-bit filesystems.  These local getters
+ * mirror the kernel's e2fs_gd_get_* in ext2_alloc.c; for rev0 filesystems the
+ * high halves are zero (left cleared by ext2fs_gdread) so the combines are
+ * harmless.
+ */
+static uint64_t
+gd_b_bitmap(const struct ext2_gd *gd)
+{
+
+	return (((uint64_t)le32toh(gd->ext4bgd_b_bitmap_hi) << 32) |
+	    le32toh(gd->ext2bgd_b_bitmap));
+}
+
+static uint64_t
+gd_i_bitmap(const struct ext2_gd *gd)
+{
+
+	return (((uint64_t)le32toh(gd->ext4bgd_i_bitmap_hi) << 32) |
+	    le32toh(gd->ext2bgd_i_bitmap));
+}
+
+static uint64_t
+gd_i_tables(const struct ext2_gd *gd)
+{
+
+	return (((uint64_t)le32toh(gd->ext4bgd_i_tables_hi) << 32) |
+	    le32toh(gd->ext2bgd_i_tables));
+}
+
+static uint32_t
+gd_nbfree(const struct ext2_gd *gd)
+{
+
+	return (((uint32_t)le16toh(gd->ext4bgd_nbfree_hi) << 16) |
+	    le16toh(gd->ext2bgd_nbfree));
+}
+
+static uint32_t
+gd_nifree(const struct ext2_gd *gd)
+{
+
+	return (((uint32_t)le16toh(gd->ext4bgd_nifree_hi) << 16) |
+	    le16toh(gd->ext2bgd_nifree));
+}
+
+static uint32_t
+gd_ndirs(const struct ext2_gd *gd)
+{
+
+	return (((uint32_t)le16toh(gd->ext4bgd_ndirs_hi) << 16) |
+	    le16toh(gd->ext2bgd_ndirs));
+}
+
+static uint32_t
+gd_i_unused(const struct ext2_gd *gd)
+{
+
+	return (((uint32_t)le16toh(gd->ext4bgd_i_unused_hi) << 16) |
+	    le16toh(gd->ext4bgd_i_unused));
+}
+
+static void
+dump_bg_flags(uint16_t flags)
+{
+
+	if (flags == 0) {
+		printf("none");
+		return;
+	}
+	if (flags & EXT2_BG_INODE_UNINIT)
+		printf("inode_uninit ");
+	if (flags & EXT2_BG_BLOCK_UNINIT)
+		printf("block_uninit ");
+	if (flags & EXT2_BG_INODE_ZEROED)
+		printf("inode_zeroed ");
+	flags &= ~(EXT2_BG_INODE_UNINIT | EXT2_BG_BLOCK_UNINIT |
+	    EXT2_BG_INODE_ZEROED);
+	if (flags != 0)
+		printf("unknown (%#x)", flags);
+}
+
+/*
+ * Dump the block group descriptor table, one stanza per group in the style of
+ * dumpfs(8)'s cylinder-group listing.  Geometry is derived from the already
+ * read superblock; the descriptors themselves come from ext2fs_gdread().
+ */
+static int
+dumpgroups(void)
+{
+	struct ext2fs *fs;
+	uint64_t bcount;
+	uint32_t bsize, bpg, ipg, isize, ipb, itpg, first_dblock, g;
+	int has64, has_csum;
+
+	if (ext2fs_gdread(&disk) == -1) {
+		printf("\n%s\n", ext2fserr());
+		return (1);
+	}
+
+	fs = &disk.d_fs;
+	bsize = 1024u << le32toh(fs->e2fs_log_bsize);
+	bpg = le32toh(fs->e2fs_bpg);
+	ipg = le32toh(fs->e2fs_ipg);
+	isize = le32toh(fs->e2fs_rev) == E2FS_REV0 ? E2FS_REV0_INODE_SIZE :
+	    le16toh(fs->e2fs_inode_size);
+	ipb = bsize / isize;
+	itpg = ipg / ipb;
+	first_dblock = le32toh(fs->e2fs_first_dblock);
+
+	has64 = le32toh(fs->e2fs_features_incompat) & EXT2F_INCOMPAT_64BIT;
+	bcount = le32toh(fs->e2fs_bcount);
+	if (has64)
+		bcount |= (uint64_t)le32toh(fs->e4fs_bcount_hi) << 32;
+
+	has_csum = (le32toh(fs->e2fs_features_rocompat) &
+	    (EXT2F_ROCOMPAT_GDT_CSUM | EXT2F_ROCOMPAT_METADATA_CKSUM)) != 0;
+
+	for (g = 0; g < disk.d_gcount; g++) {
+		struct ext2_gd *gd;
+		uint64_t first, last, itab;
+
+		gd = &disk.d_gd[g];
+		first = first_dblock + (uint64_t)g * bpg;
+		last = first + bpg - 1;
+		if (last > bcount - 1)
+			last = bcount - 1;
+		itab = gd_i_tables(gd);
+
+		printf("\nbg %u:  (blocks %ju-%ju)\n", g, (uintmax_t)first,
+		    (uintmax_t)last);
+		printf("block bitmap\t%ju\tinode bitmap\t%ju\tinode table\t%ju",
+		    (uintmax_t)gd_b_bitmap(gd), (uintmax_t)gd_i_bitmap(gd),
+		    (uintmax_t)itab);
+		if (itpg > 1 && itab != 0)
+			printf("-%ju", (uintmax_t)(itab + itpg - 1));
+		printf("\n");
+		printf("free blocks\t%u\tfree inodes\t%u\tdirectories\t%u\n",
+		    gd_nbfree(gd), gd_nifree(gd), gd_ndirs(gd));
+		printf("flags\t");
+		dump_bg_flags(le16toh(gd->ext4bgd_flags));
+		printf("\tunused inodes\t%u\n", gd_i_unused(gd));
+		if (has_csum)
+			printf("checksum\t%#06x\n",
+			    le16toh(gd->ext4bgd_csum));
+	}
+	if (disk.d_gcount > 0)
+		printf("\n");
+	return (0);
+}
+
 int
 main (int argc, char *argv[])
 {
@@ -174,6 +328,7 @@ main (int argc, char *argv[])
 		}
 
 		eval |= dumpfs(name);
+		eval |= dumpgroups();
 		ext2fs_disk_close(&disk);
 	}
 	return eval;
