@@ -76,4 +76,9 @@ int ext2fs_sbget(int, struct ext2fs **, off_t, int);
  */
 int ext2fs_gdread(struct ext2fsd *);
 
+/*
+ * block.c
+ */
+ssize_t ext2fs_bread(struct ext2fsd *, uint64_t, void *, size_t);
+
 #endif /* __LIBEXT2FS_H__ */
