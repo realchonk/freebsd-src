@@ -13,6 +13,7 @@ SUBDIR=adjkerntz \
 	dmesg \
 	dump \
 	dumpfs \
+	dumpfs_ext2fs \
 	dumpon \
 	etherswitchcfg \
 	ffsinfo \
@@ -47,6 +48,7 @@ SUBDIR=adjkerntz \
 	mount_udf \
 	mount_unionfs \
 	newfs \
+	newfs_ext2fs \
 	newfs_msdos \
 	nfsiod \
 	nos-tun \
