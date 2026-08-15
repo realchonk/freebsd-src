@@ -29,3 +29,20 @@ ext2fs_bread(struct ext2fsd *disk, uint64_t blkno, void *buf, size_t size)
 	off = (off_t)blkno * bsize;
 	return (pread(disk->d_fd, buf, size, off));
 }
+
+/*
+ * Write "size" bytes at filesystem block "blkno".
+ */
+ssize_t
+ext2fs_bwrite(struct ext2fsd *disk, uint64_t blkno, const void *buf,
+    size_t size)
+{
+	struct ext2fs *fs;
+	uint32_t bsize;
+	off_t off;
+
+	fs = &disk->d_fs;
+	bsize = 1024u << le32toh(fs->e2fs_log_bsize);
+	off = (off_t)blkno * bsize;
+	return (pwrite(disk->d_fd, buf, size, off));
+}
