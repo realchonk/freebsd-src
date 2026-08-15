@@ -127,6 +127,24 @@ int ext2fs_disk_fillout(struct ext2fsd *disk, const char *name)
 	return 0;
 }
 
+int ext2fs_disk_write(struct ext2fsd *disk)
+{
+	int fd;
+
+	ERROR(disk, NULL);
+	if ((disk->d_mine & MINE_WRITE) != 0)
+		return (0);
+	fd = open(disk->d_name, O_RDWR);
+	if (fd < 0) {
+		ERROR(disk, "failed to open disk for writing");
+		return (-1);
+	}
+	close(disk->d_fd);
+	disk->d_fd = fd;
+	disk->d_mine |= MINE_WRITE;
+	return (0);
+}
+
 int ext2fs_disk_close(struct ext2fsd *disk)
 {
 	ERROR(disk, NULL);
@@ -148,6 +166,6 @@ int ext2fs_disk_close(struct ext2fsd *disk)
 	// 	disk->d_si = NULL;
 	// }
 
-	return 0;
+	return (0);
 }
 
