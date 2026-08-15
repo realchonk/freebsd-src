@@ -1,0 +1,75 @@
+.\" Copyright (c) 2026 The FreeBSD Foundation
+.\"
+.\" SPDX-License-Identifier: BSD-2-Clause
+.\"
+.\" This software was developed by Benjamin Stürz <benni@stuerz.xyz>
+.\" under sponsorship from the FreeBSD Foundation.
+.\"
+.Dd August 10, 2026
+.Dt NEWFS_EXT2FS 8
+.Os
+.Sh NAME
+.Nm newfs_ext2fs
+.Nd construct a new ext2 file system
+.Sh SYNOPSIS
+.Nm
+.Op Fl Nn
+.Op Fl b Ar block-size
+.Op Fl i Ar bytes-per-inode
+.Op Fl L Ar volume-label
+.Op Fl m Ar reserved-percent
+.Op Fl s Ar size
+.Ar special
+.Sh DESCRIPTION
+The
+.Nm
+utility constructs an ext2 file system on the given special device.
+It creates the root directory and
+.Pa lost+found .
+.Pp
+The following options are available:
+.Bl -tag -width indent
+.It Fl b Ar block-size
+File system block size, one of 1024, 2048 or 4096 bytes
+(default 4096).
+.It Fl i Ar bytes-per-inode
+Specify the density of inodes, one inode per that many bytes of file
+system (default 16384).
+.It Fl L Ar volume-label
+Volume label, at most 15 characters drawn from letters, digits,
+.Sy _
+and
+.Sy - .
+.It Fl m Ar reserved-percent
+Percentage of blocks reserved for the super-user (default 5).
+.It Fl N
+Cause the file system parameters to be computed and printed without
+writing the file system.
+.It Fl n
+Do not create
+.Pa lost+found .
+.It Fl s Ar size
+File system size in bytes, with
+.Xr expand_number 3
+suffixes such as
+.Sm off
+.Sy k , m , g
+.Sm on
+and
+.Sy t .
+Defaults to the size of the given device or file.
+.El
+.Sh EXIT STATUS
+.Ex -std
+.Sh SEE ALSO
+.Xr ext2fs 4 ,
+.Xr newfs 8
+.Sh HISTORY
+The
+.Nm
+utility is currently under development and has not yet been released.
+.Sh AUTHORS
+.An -nosplit
+This software was developed by
+.An Benjamin Stürz Aq Mt benni@stuerz.xyz
+under sponsorship from the FreeBSD Foundation.
