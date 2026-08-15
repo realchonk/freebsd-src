@@ -115,7 +115,8 @@ int
 ext2fs_sbget(int devfd, struct ext2fs **fsp, off_t sblockloc, int flags)
 {
 
-	return (ext2_sbget(&devfd, fsp, sblockloc, flags, NULL, ext2_use_pread));
+	return (ext2_sbget(&devfd, fsp, sblockloc, flags, NULL,
+	    ext2_use_pread));
 }
 
 /*
@@ -137,6 +138,22 @@ ext2_use_pread(void *devfd, off_t loc, void **bufp, int size)
 		free(*bufp);
 		*bufp = NULL;
 		return (EIO);
+	}
+	return (0);
+}
+
+/*
+ * Write the superblock in disk->d_sb at byte offset "loc".  Byte-granular:
+ * backup copies are not block aligned when the block size exceeds 1K.
+ */
+int
+ext2fs_sbwrite(struct ext2fsd *disk, off_t loc)
+{
+
+	ERROR(disk, NULL);
+	if (pwrite(disk->d_fd, &disk->d_fs, SBLOCKSIZE, loc) != SBLOCKSIZE) {
+		ERROR(disk, "superblock write failed");
+		return (-1);
 	}
 	return (0);
 }
