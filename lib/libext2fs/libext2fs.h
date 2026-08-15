@@ -63,6 +63,7 @@ ERROR(struct ext2fsd *disk, const char *str)
 int ext2fs_disk_close(struct ext2fsd *);
 int ext2fs_disk_fillout(struct ext2fsd *, const char *);
 int ext2fs_disk_fillout_blank(struct ext2fsd *, const char *);
+int ext2fs_disk_write(struct ext2fsd *);
 
 /*
  * sblock.c
@@ -70,15 +71,18 @@ int ext2fs_disk_fillout_blank(struct ext2fsd *, const char *);
 int ext2fs_sbread(struct ext2fsd *);
 /* low level superblock read/write functions */
 int ext2fs_sbget(int, struct ext2fs **, off_t, int);
+int ext2fs_sbwrite(struct ext2fsd *, off_t);
 
 /*
  * group.c
  */
 int ext2fs_gdread(struct ext2fsd *);
+int ext2fs_cg_hassb(const struct ext2fsd *, int);
 
 /*
  * block.c
  */
 ssize_t ext2fs_bread(struct ext2fsd *, uint64_t, void *, size_t);
+ssize_t ext2fs_bwrite(struct ext2fsd *, uint64_t, const void *, size_t);
 
 #endif /* __LIBEXT2FS_H__ */
