@@ -20,8 +20,8 @@
 #include <libext2fs.h>
 
 /* Does block group cg carry a (backup) superblock? */
-static int
-ext2fs_cg_has_sb(const struct ext2fsd *disk, int cg)
+int
+ext2fs_cg_hassb(const struct ext2fsd *disk, int cg)
 {
 	const struct ext2fs *fs;
 	uint32_t compat, rocompat;
@@ -74,7 +74,7 @@ ext2fs_cg_location(const struct ext2fsd *disk, int number, uint32_t bsize,
 	    bsize / (int)E2FS_REV0_GD_SIZE;
 	cg = descpb * number;
 
-	has_super = ext2fs_cg_has_sb(disk, cg) ? 1 : 0;
+	has_super = ext2fs_cg_hassb(disk, cg) ? 1 : 0;
 
 	return ((uint64_t)has_super + (uint64_t)cg * bpg +
 	    le32toh(fs->e2fs_first_dblock));
