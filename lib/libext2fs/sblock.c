@@ -157,3 +157,97 @@ ext2fs_sbwrite(struct ext2fsd *disk, off_t loc)
 	}
 	return (0);
 }
+
+/*
+ * Validate the superblock geometry and feature sets.
+ */
+int
+ext2fs_sbverify(struct ext2fsd *disk)
+{
+	const struct ext2fs *fs;
+	uint64_t bcount;
+	uint32_t log_bsize, bsize, bpg, ipg, isize, rev;
+
+	fs = &disk->d_fs;
+
+	log_bsize = le32toh(fs->e2fs_log_bsize);
+	if (log_bsize > 2) {
+		ERROR(disk, "bad block size");
+		return (EINVAL);
+	}
+	bsize = 1024u << log_bsize;
+
+	if (le32toh(fs->e2fs_log_fsize) > EXT2_MAX_FRAG_LOG_SIZE -
+	    EXT2_MIN_BLOCK_LOG_SIZE) {
+		ERROR(disk, "invalid log fragment size");
+		return (EINVAL);
+	}
+	if (le32toh(fs->e2fs_log_fsize) != log_bsize) {
+		ERROR(disk, "fragment size != block size");
+		return (EINVAL);
+	}
+
+	bpg = le32toh(fs->e2fs_bpg);
+	if (bpg == 0 || bpg != le32toh(fs->e2fs_fpg)) {
+		ERROR(disk, "blocks per group != fragments per group");
+		return (EINVAL);
+	}
+	if (bpg != bsize * 8) {
+		ERROR(disk, "non-standard group size");
+		return (EINVAL);
+	}
+
+	if (le32toh(fs->e2fs_first_dblock) != (bsize > 1024 ? 0 : 1)) {
+		ERROR(disk, "first data block out of range");
+		return (EINVAL);
+	}
+
+	rev = le32toh(fs->e2fs_rev);
+	isize = rev == E2FS_REV0 ? E2FS_REV0_INODE_SIZE :
+	    le16toh(fs->e2fs_inode_size);
+	if (rev > E2FS_REV0 &&
+	    (isize < E2FS_REV0_INODE_SIZE || isize > bsize ||
+	    (isize & (isize - 1)) != 0)) {
+		ERROR(disk, "invalid inode size");
+		return (EINVAL);
+	}
+	if (rev > E2FS_REV0 && le32toh(fs->e2fs_first_ino) < EXT2_FIRSTINO) {
+		ERROR(disk, "invalid first inode");
+		return (EINVAL);
+	}
+
+	ipg = le32toh(fs->e2fs_ipg);
+	if (ipg < bsize / isize || ipg > bsize * 8) {
+		ERROR(disk, "invalid inodes per group");
+		return (EINVAL);
+	}
+
+	bcount = le32toh(fs->e2fs_bcount);
+	if (le32toh(fs->e2fs_features_incompat) & EXT2F_INCOMPAT_64BIT)
+		bcount |= (uint64_t)le32toh(fs->e4fs_bcount_hi) << 32;
+	if (bcount <= le32toh(fs->e2fs_first_dblock)) {
+		ERROR(disk, "invalid block count");
+		return (EINVAL);
+	}
+	if (le32toh(fs->e2fs_rbcount) > bcount ||
+	    le32toh(fs->e2fs_fbcount) > bcount) {
+		ERROR(disk, "invalid block count");
+		return (EINVAL);
+	}
+	if (le32toh(fs->e2fs_ficount) > le32toh(fs->e2fs_icount)) {
+		ERROR(disk, "invalid free inode count");
+		return (EINVAL);
+	}
+
+	if ((le32toh(fs->e2fs_features_incompat) & EXT2F_INCOMPAT_64BIT) &&
+	    le16toh(fs->e3fs_desc_size) != E2FS_64BIT_GD_SIZE) {
+		ERROR(disk, "unsupported 64bit descriptor size");
+		return (EINVAL);
+	}
+	if (le16toh(fs->e2fs_reserved_ngdb) > bsize / 4) {
+		ERROR(disk, "number of reserved GDT blocks too large");
+		return (EINVAL);
+	}
+
+	return (0);
+}
