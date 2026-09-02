@@ -22,6 +22,7 @@
 #include <unistd.h>
 
 #include <libext2fs.h>
+#include <fs/ext2fs/inode.h>
 #include <fs/ext2fs/ext2_dinode.h>
 #include <fs/ext2fs/ext2_dir.h>
 
@@ -129,6 +130,12 @@ mkfs(const char *fsys)
 		struct ext2_gd *gd = &disk.d_gd[cg];
 		uint32_t first, meta, nblk;
 
+		/*
+		 * ext2fs_cg_hassb() reads the feature flags, so seed the
+		 * sparse_super bit before laying out the groups.
+		 */
+		fs->e2fs_features_rocompat =
+		    htole32(EXT2F_ROCOMPAT_SPARSESUPER);
 		first = group_first(cg);
 		meta = ext2fs_cg_hassb(&disk, cg) ? 1 + gdbcount : 0;
 		nblk = bpg;
