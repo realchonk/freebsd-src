@@ -49,6 +49,7 @@ ext2fs_inoloc(const struct ext2fsd *disk, ino_t ino, uint64_t *blkp,
 	idx = (uint32_t)(ino - 1);
 
 	gd = &disk->d_gd[idx / ipg];
+	idx %= ipg;
 	*blkp = ((uint64_t)le32toh(gd->ext2bgd_i_tables) |
 	    (uint64_t)le32toh(gd->ext4bgd_i_tables_hi) << 32) +
 	    (uint64_t)idx * *isizep / (1024u << le32toh(fs->e2fs_log_bsize));
