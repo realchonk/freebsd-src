@@ -14,7 +14,7 @@
 #include <stddef.h>
 
 #include <fs/ext2fs/fs.h>
-#include <fs/ext2fs/inode.h>
+#include <fs/ext2fs/ext2_dinode.h>
 #include <fs/ext2fs/ext2fs.h>
 
 struct ext2fsd {
@@ -72,6 +72,7 @@ int ext2fs_sbread(struct ext2fsd *);
 /* low level superblock read/write functions */
 int ext2fs_sbget(int, struct ext2fs **, off_t, int);
 int ext2fs_sbwrite(struct ext2fsd *, off_t);
+int ext2fs_sbverify(struct ext2fsd *);
 
 /*
  * group.c
