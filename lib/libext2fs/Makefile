@@ -8,7 +8,8 @@ SHLIB_MAJOR =	1
 SRCS =		type.c	\
 		sblock.c \
 		group.c \
-		block.c
+		block.c \
+		inode.c
 
 # Pull in the dual-mode superblock reader shared with the kernel ext2fs
 # driver, mirroring the way libufs reuses sys/ufs/ffs/ffs_subr.c.

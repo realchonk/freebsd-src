@@ -86,4 +86,10 @@ int ext2fs_cg_hassb(const struct ext2fsd *, int);
 ssize_t ext2fs_bread(struct ext2fsd *, uint64_t, void *, size_t);
 ssize_t ext2fs_bwrite(struct ext2fsd *, uint64_t, const void *, size_t);
 
+/*
+ * inode.c
+ */
+int ext2fs_iget(struct ext2fsd *, ino_t, struct ext2fs_dinode *);
+int ext2fs_iput(struct ext2fsd *, ino_t, const struct ext2fs_dinode *);
+
 #endif /* __LIBEXT2FS_H__ */
