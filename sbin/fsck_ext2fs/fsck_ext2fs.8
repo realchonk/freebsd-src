@@ -1,0 +1,54 @@
+.\" Copyright (c) 2026 The FreeBSD Foundation
+.\"
+.\" SPDX-License-Identifier: BSD-2-Clause
+.\"
+.\" This software was developed by Benjamin Stürz <benni@stuerz.xyz>
+.\" under sponsorship from the FreeBSD Foundation.
+.\"
+.Dd August 29, 2026
+.Dt FSCK_EXT2FS 8
+.Os
+.Sh NAME
+.Nm fsck_ext2fs
+.Nd check ext2 file system consistency
+.Sh SYNOPSIS
+.Nm
+.Op Fl Cdfnpy
+.Op Fl b Ar number
+.Ar filesys | device
+.Sh DESCRIPTION
+The
+.Nm
+utility checks and reports ext2 file system consistency.
+This version is a read-only checker: it detects problems but does not
+repair them.
+It is the ext2 counterpart of
+.Xr fsck_ffs 8 .
+.Pp
+If
+.Fl b
+is specified, the superblock at the given block is used.
+The block numbers are printed by
+.Xr newfs_ext2fs 8 .
+.Pp
+If
+.Fl f
+is specified, the file system is checked even when marked clean.
+.Pp
+If
+.Fl p
+is specified, the file system is preened: clean file systems are
+skipped.
+.Sh SEE ALSO
+.Xr ext2fs 4 ,
+.Xr fsck_ffs 8 ,
+.Xr newfs_ext2fs 8
+.Sh HISTORY
+The
+.Nm
+utility is currently under development and has not yet been released.
+.Sh AUTHORS
+.An -nosplit
+This software was developed by
+.An Benjamin Stürz Aq Mt benni@stuerz.xyz
+under sponsorship from the FreeBSD Foundation.
