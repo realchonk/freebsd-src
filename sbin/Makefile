@@ -19,6 +19,7 @@ SUBDIR=adjkerntz \
 	ffsinfo \
 	fsck \
 	fsck_ffs \
+	fsck_ext2fs \
 	fsck_msdosfs \
 	fsdb \
 	fsirand \
