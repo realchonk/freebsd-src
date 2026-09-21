@@ -170,6 +170,33 @@ ext2fs_gdread(struct ext2fsd *disk)
 	free(buf);
 	disk->d_gcount = gcount;
 
+	/*
+	 * Every group has nonzero metadata block numbers inside the
+	 * filesystem, and its inode table fits; data blocks that merely
+	 * resemble a superblock otherwise pair with zero or garbage
+	 * descriptors.
+	 */
+	for (i = 0; i < gcount; i++) {
+		struct ext2_gd *gd = &disk->d_gd[i];
+		uint64_t itables = (uint64_t)le32toh(gd->ext2bgd_i_tables) |
+		    (uint64_t)le32toh(gd->ext4bgd_i_tables_hi) << 32;
+		uint32_t itb = howmany(le32toh(fs->e2fs_ipg) *
+		    (le32toh(fs->e2fs_rev) == E2FS_REV0 ? E2FS_REV0_INODE_SIZE :
+		    le16toh(fs->e2fs_inode_size)), bsize);
+
+		if (le32toh(gd->ext2bgd_b_bitmap) == 0 ||
+		    le32toh(gd->ext2bgd_i_bitmap) == 0 ||
+		    itables == 0 ||
+		    le32toh(gd->ext2bgd_b_bitmap) >= bcount ||
+		    le32toh(gd->ext2bgd_i_bitmap) >= bcount ||
+		    itables + itb > bcount) {
+			free(disk->d_gd);
+			disk->d_gd = NULL;
+			ERROR(disk, "invalid group descriptor");
+			errno = EINVAL;
+			return (-1);
+		}
+	}
 	return (0);
 }
 
