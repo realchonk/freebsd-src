@@ -78,6 +78,7 @@ int ext2fs_sbverify(struct ext2fsd *);
  * group.c
  */
 int ext2fs_gdread(struct ext2fsd *);
+int ext2fs_gdwrite(struct ext2fsd *);
 int ext2fs_cg_hassb(const struct ext2fsd *, int);
 
 /*
