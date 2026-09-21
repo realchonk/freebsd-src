@@ -23,12 +23,12 @@ int	skipclean = 1;
 int	yflag;
 int	maxfsblock;
 int	maxino;
+int	fsmodified;
+int	uncorrected;
 int64_t	n_blks;
 int64_t	n_files;
 char	*blockmap;
 struct inostatlist *inostathead;
-struct dups *duplist;
-struct dups *muldup;
 struct ext2fsd disk;
 ino_t	*parentof;
 
@@ -37,10 +37,10 @@ fsckinit(void)
 {
 	cdevname = NULL;
 	maxfsblock = maxino = 0;
+	fsmodified = uncorrected = 0;
 	n_blks = n_files = 0;
 	free(blockmap);
 	blockmap = NULL;
-	duplist = muldup = NULL;
 	inostathead = NULL;
 	free(parentof);
 	parentof = NULL;
