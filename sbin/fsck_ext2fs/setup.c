@@ -34,7 +34,9 @@ sblockloc(uint32_t cg)
 }
 
 /*
- * Try to read and verify a superblock at byte offset loc.
+ * Try to read and verify a superblock at byte offset loc: the group
+ * descriptor table must validate too, so a data block that merely
+ * resembles a superblock is rejected.
  */
 static int
 trysb(off_t loc)
@@ -45,6 +47,8 @@ trysb(off_t loc)
 		return (0);
 	if (ext2fs_sbverify(&disk) != 0)
 		return (0);
+	if (ext2fs_gdread(&disk) == -1)
+		return (0);
 	return (1);
 }
 
@@ -52,12 +56,12 @@ trysb(off_t loc)
  * Read the superblock: from -b if given, else the primary, else search
  * the backups.  Backup groups are cg 1 and odd cgs that are powers of
  * 3, 5 and 7; the primary's geometry is untrusted, so the search probes
- * candidate blocks for each legal block size.
+ * candidate blocks for each legal block size, largest first.
  */
 int
 readsb(void)
 {
-	static const uint32_t bsizes[] = { 1024, 2048, 4096 };
+	static const uint32_t bsizes[] = { 4096, 2048, 1024 };
 	struct ext2fs *fs = &disk.d_fs;
 	uint32_t bsize, cg, bpi;
 	uint64_t blk;
@@ -80,7 +84,8 @@ readsb(void)
 	for (cg = 1; cg < 64; cg += 2) {
 		for (bpi = 0; bpi < nitems(bsizes); bpi++) {
 			bsize = bsizes[bpi];
-			blk = (bsize == 1024 ? 1 : 0) + (uint64_t)cg * bsize * 8;
+			blk = (bsize == 1024 ? 1 : 0) +
+			    (uint64_t)cg * bsize * 8;
 			loc = (off_t)blk * bsize +
 			    (bsize == 1024 ? 0 : SBLOCKOFFSET);
 			if (trysb(loc))
@@ -112,8 +117,7 @@ setup(const char *filesys)
 
 	if (openfilesys(filesys) == 0 || readsb() == 0)
 		return (0);
-	if (ext2fs_gdread(&disk) == -1)
-		return (0);
+	/* readsb() verified the group descriptors along the way. */
 	fs = &disk.d_fs;
 	gcount = disk.d_gcount;
 	maxfsblock = (int)le32toh(fs->e2fs_bcount);
@@ -127,5 +131,14 @@ setup(const char *filesys)
 	if (skipclean && ckclean &&
 	    le16toh(fs->e2fs_state) == E2FS_ISCLEAN)
 		return (-1);
+
+	/* Fixes need a writable device unless -n was given. */
+	fswritefd = -1;
+	if (!nflag) {
+		if (ext2fs_disk_write(&disk) == 0)
+			fswritefd = 1;
+		else
+			pwarn("NO WRITE ACCESS; FIXES WILL BE DECLINED\n");
+	}
 	return (1);
 }
