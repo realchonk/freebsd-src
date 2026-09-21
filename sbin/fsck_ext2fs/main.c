@@ -92,6 +92,20 @@ checkfilesys(const char *filesys)
 	pass3();
 	pass4();
 	pass5();
+
+	/*
+	 * A checked filesystem with nothing left uncorrected is clean:
+	 * without the bit, the kernel keeps refusing read-write mounts.
+	 */
+	if (fswritefd >= 0 && uncorrected == 0 &&
+	    (le16toh(disk.d_fs.e2fs_state) & E2FS_ISCLEAN) == 0) {
+		disk.d_fs.e2fs_state =
+		    htole16(le16toh(disk.d_fs.e2fs_state) | E2FS_ISCLEAN);
+		if (ext2fs_sbwrite(&disk, disk.d_sblockloc) == 0)
+			fsmodified = 1;
+		else
+			pwarn("SUPERBLOCK WRITE FAILED\n");
+	}
 	/* In-use counts as e2fsck reports them: total - free from the
 	 * superblock counters; n_files/n_blks stay internal to the passes. */
 	printf("%ju files, %ju blocks, %u free\n",
