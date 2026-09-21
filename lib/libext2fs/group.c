@@ -169,5 +169,71 @@ ext2fs_gdread(struct ext2fsd *disk)
 
 	free(buf);
 	disk->d_gcount = gcount;
+
+	return (0);
+}
+
+/* Write the in-core group descriptor table back to disk. */
+int
+ext2fs_gdwrite(struct ext2fsd *disk)
+{
+	struct ext2fs *fs;
+	uint32_t incompat, bsize, bpg, first_dblock, gdsize, descpb, gdbcount;
+	uint32_t gcount, i, j;
+	int has64, has_meta_bg;
+	char *buf;
+
+	fs = &disk->d_fs;
+	ERROR(disk, NULL);
+	if (disk->d_gd == NULL) {
+		ERROR(disk, "no group descriptor table");
+		errno = EINVAL;
+		return (-1);
+	}
+
+	incompat = le32toh(fs->e2fs_features_incompat);
+	has64 = (incompat & EXT2F_INCOMPAT_64BIT) != 0;
+	has_meta_bg = (incompat & EXT2F_INCOMPAT_META_BG) != 0;
+
+	bsize = 1024u << le32toh(fs->e2fs_log_bsize);
+	bpg = le32toh(fs->e2fs_bpg);
+	first_dblock = le32toh(fs->e2fs_first_dblock);
+	(void)first_dblock;
+
+	gdsize = has64 ? E2FS_64BIT_GD_SIZE : E2FS_REV0_GD_SIZE;
+	descpb = bsize / gdsize;
+	gcount = disk->d_gcount;
+	gdbcount = howmany(gcount, descpb);
+
+	buf = malloc(bsize);
+	if (buf == NULL) {
+		ERROR(disk, "failed to allocate group descriptor buffer");
+		errno = ENOMEM;
+		return (-1);
+	}
+
+	for (i = 0; i < gdbcount; i++) {
+		uint64_t blk;
+
+		blk = ext2fs_cg_location(disk, (int)i, bsize, bpg, has64,
+		    has_meta_bg);
+		if (has64) {
+			/* Entries are full struct ext2_gd on disk. */
+			memcpy(buf, disk->d_gd + (size_t)i * descpb, bsize);
+		} else {
+			/* Rev0: the first 32 bytes of each struct. */
+			for (j = 0; j < descpb; j++)
+				memcpy(buf + (size_t)j * gdsize,
+				    &disk->d_gd[(size_t)i * descpb + j],
+				    gdsize);
+		}
+		if (ext2fs_bwrite(disk, blk, buf, bsize) != (ssize_t)bsize) {
+			free(buf);
+			ERROR(disk, "group descriptor table write failed");
+			errno = EIO;
+			return (-1);
+		}
+	}
+	free(buf);
 	return (0);
 }
