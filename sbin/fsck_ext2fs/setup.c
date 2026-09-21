@@ -132,10 +132,16 @@ setup(const char *filesys)
 	    le16toh(fs->e2fs_state) == E2FS_ISCLEAN)
 		return (-1);
 
-	/* Fixes need a writable device unless -n was given. */
+	/* Fixes need a writable device unless -n was given.  Repairs on
+	 * checksummed filesystems would invalidate the metadata checksums,
+	 * so those run report-only until supported. */
 	fswritefd = -1;
 	if (!nflag) {
-		if (ext2fs_disk_write(&disk) == 0)
+		if (le32toh(fs->e2fs_features_rocompat) &
+		    EXT2F_ROCOMPAT_METADATA_CKSUM)
+			pwarn("METADATA_CKSUM REPAIRS NOT SUPPORTED; "
+			    "REPORT ONLY\n");
+		else if (ext2fs_disk_write(&disk) == 0)
 			fswritefd = 1;
 		else
 			pwarn("NO WRITE ACCESS; FIXES WILL BE DECLINED\n");
