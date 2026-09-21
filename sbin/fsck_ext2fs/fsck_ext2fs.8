@@ -5,43 +5,104 @@
 .\" This software was developed by Benjamin Stürz <benni@stuerz.xyz>
 .\" under sponsorship from the FreeBSD Foundation.
 .\"
-.Dd August 29, 2026
+.Dd September 21, 2026
 .Dt FSCK_EXT2FS 8
 .Os
 .Sh NAME
 .Nm fsck_ext2fs
-.Nd check ext2 file system consistency
+.Nd check and repair an ext2 file system
 .Sh SYNOPSIS
 .Nm
-.Op Fl Cdfnpy
+.Op Fl Cfnpy
 .Op Fl b Ar number
 .Ar filesys | device
 .Sh DESCRIPTION
 The
 .Nm
-utility checks and reports ext2 file system consistency.
-This version is a read-only checker: it detects problems but does not
-repair them.
+utility checks and repairs ext2, ext3, and ext4 file systems.
 It is the ext2 counterpart of
 .Xr fsck_ffs 8 .
 .Pp
-If
-.Fl b
-is specified, the superblock at the given block is used.
-The block numbers are printed by
-.Xr newfs_ext2fs 8 .
+The
+.Ar filesys
+argument may be a block device, a raw device, or a file system image.
 .Pp
-If
-.Fl f
-is specified, the file system is checked even when marked clean.
+The checks and repairs are performed in five passes:
+.Bl -enum -compact
+.It
+Inodes, block pointers, and sizes: block pointers out of range are
+cleared and the block count adjusted; a block claimed twice is kept
+by its first claimant and cleared from the later ones.
+.It
+Directory structure: entries pointing at unallocated inodes are
+cleared, the file type byte is fixed from the inode mode, and the
+.Ql \&.
+and
+.Ql \&.\&.
+entries are validated and rewritten.
+.It
+Directory connectivity: directories not reachable from the root are
+reconnected in
+.Pa lost+found ,
+which is created when absent, or cleared.
+.It
+Reference counts: link counts are adjusted to the references found,
+and unattached inodes are cleared, releasing their blocks.
+.It
+Group summary information: the block and inode bitmaps and the group
+descriptor and superblock counters are rebuilt from what the earlier
+passes computed.
+.El
 .Pp
-If
+Repairs are applied after confirmation, or automatically when
+.Fl y
+or
 .Fl p
-is specified, the file system is preened: clean file systems are
-skipped.
+is given.
+File systems using the
+.Dq META_BG
+or
+.Dq FLEX_BG
+features are checked with the group summary pass skipped, since the
+metadata layout of those features is not yet supported.
+.Pp
+The options are as follows:
+.Bl -tag -width indent
+.It Fl b Ar number
+Use the superblock at the given block number instead of the primary
+superblock.
+When the primary superblock cannot be found, the backups are searched
+automatically.
+.It Fl C
+Skip the file system when it is marked clean.
+.It Fl f
+Check the file system even when marked clean.
+.It Fl n
+Assume a
+.Dq no
+answer to all repairs; the file system is never written.
+.It Fl p
+Preen the file system: fix what can be fixed safely without operator
+interaction and abort on anything that would require a judgement
+call.
+.It Fl y
+Assume a
+.Dq yes
+answer to all repairs.
+.El
+.Sh EXIT STATUS
+.Ex -std
+.Pp
+The exit status is a bit mask:
+1 indicates that the file system was modified,
+4 that problems were left uncorrected,
+8 an operational error,
+and 16 a usage error.
 .Sh SEE ALSO
 .Xr ext2fs 4 ,
+.Xr fsck 8 ,
 .Xr fsck_ffs 8 ,
+.Xr dumpfs_ext2fs 8 ,
 .Xr newfs_ext2fs 8
 .Sh HISTORY
 The
