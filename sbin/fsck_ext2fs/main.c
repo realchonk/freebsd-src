@@ -20,6 +20,9 @@ main(int argc, char *argv[])
 {
 	int ch, ret = 0;
 
+	/* Interleave reports, prompts, and fixes in order. */
+	setvbuf(stdout, NULL, _IONBF, 0);
+
 	while ((ch = getopt(argc, argv, "b:Cdfnpy")) != -1) {
 		switch (ch) {
 		case 'b':
@@ -72,6 +75,7 @@ checkfilesys(const char *filesys)
 
 	switch (setup(filesys)) {
 	case 0:
+		pwarn("%s: unable to open or verify file system\n", filesys);
 		if (preen)
 			pfatal("CAN'T CHECK FILE SYSTEM.");
 		return (EEXIT);
@@ -97,7 +101,13 @@ checkfilesys(const char *filesys)
 		le32toh(disk.d_fs.e2fs_fbcount)),
 	    le32toh(disk.d_fs.e2fs_fbcount));
 	ckfini(0);
+	if (fsmodified)
+		printf("***** FILE SYSTEM WAS MODIFIED *****\n");
 	ret = 0;
+	if (fsmodified)
+		ret |= 1;			/* filesystem modified */
+	if (uncorrected)
+		ret |= 4;			/* errors left uncorrected */
 	return (ret);
 }
 

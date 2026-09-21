@@ -28,6 +28,36 @@ typedef int32_t doff_t;
 #include <libext2fs.h>
 
 /*
+ * ext4 extent tree on disk.  The kernel's ext2_extents.h declares
+ * kernel-only prototypes, so the on-disk layout is repeated here;
+ * see sys/fs/ext2fs/ext2_extents.h.  All fields little-endian.
+ */
+#define	EXT4_EXT_MAGIC		0xf30a
+#define	EXT_INIT_MAX_LEN	(1u << 15)
+
+struct ext4_extent {
+	uint32_t	e_blk;		/* first logical block */
+	uint16_t	e_len;		/* number of blocks */
+	uint16_t	e_start_hi;	/* high bits of physical block */
+	uint32_t	e_start_lo;	/* low bits of physical block */
+};
+
+struct ext4_extent_index {
+	uint32_t	ei_blk;		/* indexes logical blocks */
+	uint32_t	ei_leaf_lo;	/* next level's physical block */
+	uint16_t	ei_leaf_hi;	/* high bits of physical block */
+	uint16_t	ei_unused;
+};
+
+struct ext4_extent_header {
+	uint16_t	eh_magic;	/* EXT4_EXT_MAGIC */
+	uint16_t	eh_ecount;	/* number of valid entries */
+	uint16_t	eh_max;		/* capacity of store in entries */
+	uint16_t	eh_depth;	/* depth of the extent tree */
+	uint32_t	eh_gen;		/* generation of extent tree */
+};
+
+/*
  * Exit codes (rc.d/fsck dispatches on these).
  */
 #define	EEXIT	8		/* standard error exit */
@@ -58,10 +88,18 @@ typedef int32_t doff_t;
 #define	ALTERED	0x20
 #define	FOUND	0x40
 
+/*
+ * Whether a problem may be fixed, per walk (id_fix) — see dofix().
+ */
+enum fixstate { DONTKNOW, FIX, NOFIX, IGNORE };
+
+#define	MAXBAD	10			/* limit on bad blks (per inode) */
+#define	MAXDUP	10			/* limit on dup blks (per inode) */
+
 struct inostat {
 	u_char	ino_state;
 	u_char	ino_type;
-	u_short	ino_linkcnt;
+	int16_t	ino_linkcnt;	/* stored count minus references found */
 	u_short	ino_ftype;	/* EXT2_FT_* from the inode mode */
 };
 
@@ -77,11 +115,6 @@ struct inoinfo {
 	size_t	i_isize;
 	u_int	i_numblks;
 	uint64_t i_blks[1];
-};
-
-struct dups {
-	struct dups *next;
-	uint64_t	dup;
 };
 
 /*
@@ -101,6 +134,12 @@ struct inodesc {
 	uint64_t id_blkno;
 	uint64_t id_firstblock;
 	uint64_t id_numblocks;
+	enum fixstate id_fix;	/* may this walk fix what it finds? */
+	uint64_t id_ptrblk;	/* ADDR: block holding the pointer to
+				 * id_blkno, or 0 if it is in the inode */
+	u_int	id_ptroff;	/* ADDR: byte offset of the pointer in it */
+	u_int	id_ptridx;	/* ADDR: index in e2di_blocks[] when
+				 * id_ptrblk == 0 */
 };
 
 /*
@@ -110,10 +149,11 @@ extern const char *cdevname;
 extern int	bflag, ckclean, debug, fswritefd;
 extern int	nflag, preen, skipclean, yflag;
 extern int	maxfsblock, maxino;
+extern int	fsmodified;	/* 1 == the filesystem has been written */
+extern int	uncorrected;	/* 1 == a problem was left unfixed */
 extern int64_t	n_blks, n_files;
 extern char	*blockmap;
 extern struct inostatlist *inostathead;
-extern struct dups *duplist, *muldup;
 extern struct ext2fsd disk;
 extern ino_t	*parentof;	/* containing directory per inode, pass2 */
 
@@ -183,6 +223,13 @@ void	ckfini(int markclean);
  */
 int	ckinode(struct ext2fs_dinode *, struct inodesc *);
 int	ginode(ino_t, struct ext2fs_dinode *);
+int	direntry_write(struct inodesc *);
+int	dir_add_entry(ino_t, const char *, int, ino_t);
+
+/*
+ * pass4.c
+ */
+void	clri(struct inodesc *, ino_t, const char *);
 
 /*
  * pass1.c
