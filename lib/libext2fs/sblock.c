@@ -203,6 +203,10 @@ ext2fs_sbverify(struct ext2fsd *disk)
 	}
 
 	rev = le32toh(fs->e2fs_rev);
+	if (rev > E2FS_REV1) {
+		ERROR(disk, "unknown revision");
+		return (EINVAL);
+	}
 	isize = rev == E2FS_REV0 ? E2FS_REV0_INODE_SIZE :
 	    le16toh(fs->e2fs_inode_size);
 	if (rev > E2FS_REV0 &&
