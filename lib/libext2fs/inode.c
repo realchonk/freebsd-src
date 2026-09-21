@@ -7,6 +7,7 @@
 * under sponsorship from the FreeBSD Foundation.
 */
 
+#include <sys/param.h>
 #include <sys/endian.h>
 #include <sys/types.h>
 
@@ -39,8 +40,13 @@ ext2fs_inoloc(const struct ext2fsd *disk, ino_t ino, uint64_t *blkp,
 
 	*isizep = le32toh(fs->e2fs_rev) == E2FS_REV0 ? E2FS_REV0_INODE_SIZE :
 	    le16toh(fs->e2fs_inode_size);
+	/*
+	 * Sizes beyond the understood struct (e.g. the 256 bytes of
+	 * e2fsprogs-created filesystems) are fine: the extra bytes hold
+	 * extended fields that callers do not interpret.
+	 */
 	if (*isizep < E2FS_REV0_INODE_SIZE ||
-	    *isizep > sizeof(struct ext2fs_dinode)) {
+	    *isizep > (1024u << le32toh(fs->e2fs_log_bsize))) {
 		errno = EINVAL;
 		return (-1);
 	}
@@ -53,7 +59,8 @@ ext2fs_inoloc(const struct ext2fsd *disk, ino_t ino, uint64_t *blkp,
 	*blkp = ((uint64_t)le32toh(gd->ext2bgd_i_tables) |
 	    (uint64_t)le32toh(gd->ext4bgd_i_tables_hi) << 32) +
 	    (uint64_t)idx * *isizep / (1024u << le32toh(fs->e2fs_log_bsize));
-	*boffp = (uint64_t)idx * *isizep % (1024u << le32toh(fs->e2fs_log_bsize));
+	*boffp = (uint64_t)idx * *isizep %
+	    (1024u << le32toh(fs->e2fs_log_bsize));
 	return (0);
 }
 
@@ -80,7 +87,7 @@ ext2fs_iget(struct ext2fsd *disk, ino_t ino, struct ext2fs_dinode *di)
 		ERROR(disk, "inode read failed");
 		return (-1);
 	}
-	memcpy(di, buf + boff, isize);
+	memcpy(di, buf + boff, isize < sizeof(*di) ? isize : sizeof(*di));
 	free(buf);
 	return (0);
 }
@@ -108,7 +115,7 @@ ext2fs_iput(struct ext2fsd *disk, ino_t ino, const struct ext2fs_dinode *di)
 		ERROR(disk, "inode read failed");
 		return (-1);
 	}
-	memcpy(buf + boff, di, isize);
+	memcpy(buf + boff, di, isize < sizeof(*di) ? isize : sizeof(*di));
 	if (ext2fs_bwrite(disk, blk, buf, bsize) != (ssize_t)bsize) {
 		free(buf);
 		ERROR(disk, "inode write failed");
