@@ -82,6 +82,8 @@ ckinode_indir(uint64_t blkno, int depth, struct inodesc *idesc)
 /* Directory block walker shared by dirscan(). */
 static char *dirbuf;
 static uint64_t dirbufblk = ~0u;
+static void	dirblock_csum(ino_t, void *, uint32_t);
+static uint32_t	dirgen(ino_t);
 
 /*
  * Validate the directory entry dp that has spaceleft bytes to the end
@@ -135,6 +137,20 @@ fsck_readdir(struct inodesc *idesc)
 		    (ssize_t)bsize)
 			return (NULL);
 		dirbufblk = idesc->id_blkno;
+		if ((le32toh(disk.d_fs.e2fs_features_rocompat) &
+		    EXT2F_ROCOMPAT_METADATA_CKSUM) != 0 &&
+		    ext2_dirent_csum_check(disk.d_csum_seed, idesc->id_ino,
+		    dirgen(idesc->id_ino), dirbuf, bsize) != 0) {
+			pwarn("I=%ju: DIRECTORY BLOCK %ju CHECKSUM WRONG\n",
+			    (uintmax_t)idesc->id_ino,
+			    (uintmax_t)idesc->id_blkno);
+			if (dofix(idesc, "FIX DIRECTORY CHECKSUM") != 0) {
+				dirblock_csum(idesc->id_ino, dirbuf, bsize);
+				if (ext2fs_bwrite(&disk, idesc->id_blkno,
+				    dirbuf, bsize) == (ssize_t)bsize)
+					fsmodified = 1;
+			}
+		}
 	}
 	dp = (struct ext2fs_direct_2 *)(dirbuf + idesc->id_loc);
 	spaceleft = bsize - idesc->id_loc;
@@ -178,6 +194,32 @@ dirscan(struct inodesc *idesc)
 			return (go);
 	}
 	return (idesc->id_filesize > 0 ? KEEPON : STOP);
+}
+
+/*
+ * Refresh the checksum tail of a modified directory block of directory
+ * dir, so the caller can write it back.
+ */
+static void
+dirblock_csum(ino_t dir, void *buf, uint32_t bsize)
+{
+
+	if ((le32toh(disk.d_fs.e2fs_features_rocompat) &
+	    EXT2F_ROCOMPAT_METADATA_CKSUM) == 0)
+		return;
+	ext2_dirent_csum_update(disk.d_csum_seed, dir, dirgen(dir), buf,
+	    bsize);
+}
+
+/* The generation of inode ino, 0 when unreadable. */
+static uint32_t
+dirgen(ino_t ino)
+{
+	struct ext2fs_dinode di;
+
+	if (ext2fs_iget(&disk, ino, &di) != 0)
+		return (0);
+	return (le32toh(di.e2di_gen));
 }
 
 /*
@@ -263,6 +305,7 @@ direntry_write(struct inodesc *idesc)
 	bsize = 1024u << le32toh(disk.d_fs.e2fs_log_bsize);
 	if (dirbufblk != idesc->id_blkno)
 		return (-1);
+	dirblock_csum(idesc->id_ino, dirbuf, bsize);
 	if (ext2fs_bwrite(&disk, idesc->id_blkno, dirbuf, bsize) !=
 	    (ssize_t)bsize)
 		return (-1);
@@ -301,7 +344,12 @@ dir_add_entry(ino_t dirino, const char *name, int ftype, ino_t target)
 			continue;
 		if (ext2fs_bread(&disk, b, buf, bsize) != (ssize_t)bsize)
 			continue;
+		/* Entries must leave room for the checksum tail. */
 		usable = bsize;
+		if ((le32toh(disk.d_fs.e2fs_features_rocompat) &
+		    EXT2F_ROCOMPAT_METADATA_CKSUM) != 0 &&
+		    ext2_dirent_has_tail(buf, bsize))
+			usable = bsize - sizeof(struct ext2fs_direct_tail);
 		lastoff = 0;
 		for (off = 0; off + EXT2_DIR_REC_LEN(0) <= usable; ) {
 			dp = (struct ext2fs_direct_2 *)(buf + off);
@@ -349,6 +397,7 @@ dir_add_entry(ino_t dirino, const char *name, int ftype, ino_t target)
 	dp->e2d_type = ftype;
 	memset(dp->e2d_name, 0, avail - EXT2_DIR_REC_LEN(0));
 	memcpy(dp->e2d_name, name, nl);
+	dirblock_csum(dirino, buf, bsize);
 	if (ext2fs_bwrite(&disk, b, buf, bsize) != (ssize_t)bsize) {
 		free(buf);
 		return (-1);

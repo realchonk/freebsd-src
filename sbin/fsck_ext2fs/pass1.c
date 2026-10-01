@@ -186,6 +186,20 @@ pass1(void)
 		idesc.id_func = pass1check;
 		idesc.id_type = ADDR;
 		idesc.id_fix = nflag ? IGNORE : DONTKNOW;
+
+		/* The checksum covers whatever the passes may repair. */
+		if ((le32toh(disk.d_fs.e2fs_features_rocompat) &
+		    EXT2F_ROCOMPAT_METADATA_CKSUM) != 0 &&
+		    ext2fs_icsum(&disk, ino) != 0) {
+			pwarn("I=%ju: INODE CHECKSUM WRONG\n", (uintmax_t)ino);
+			if (dofix(&idesc, "FIX INODE CHECKSUM") != 0) {
+				if (ext2fs_iput(&disk, ino, &dp) == 0)
+					fsmodified = 1;
+				else
+					pwarn("INODE %ju WRITE FAILED\n",
+					    (uintmax_t)ino);
+			}
+		}
 		ckinode(&dp, &idesc);
 
 		/*
