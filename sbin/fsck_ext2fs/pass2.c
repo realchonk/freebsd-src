@@ -159,6 +159,10 @@ checkdotdot(ino_t ino)
 				getinostat(bad)->ino_linkcnt++;
 			getinostat(parentof[ino])->ino_linkcnt--;
 			dp->e2d_ino = htole32((uint32_t)parentof[ino]);
+			if ((le32toh(disk.d_fs.e2fs_features_rocompat) &
+			    EXT2F_ROCOMPAT_METADATA_CKSUM) != 0)
+				ext2_dirent_csum_update(disk.d_csum_seed, ino,
+				    le32toh(di.e2di_gen), buf, bsize);
 			if (ext2fs_bwrite(&disk, blk, buf, bsize) ==
 			    (ssize_t)bsize)
 				fsmodified = 1;

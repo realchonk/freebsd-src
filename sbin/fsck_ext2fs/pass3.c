@@ -125,10 +125,18 @@ mklf(void)
 	memcpy(dp->e2d_name, ".", 1);
 	dp = (struct ext2fs_direct_2 *)(buf + EXT2_DIR_REC_LEN(1));
 	dp->e2d_ino = htole32((uint32_t)EXT2_ROOTINO);
-	dp->e2d_reclen = htole16(bsize - EXT2_DIR_REC_LEN(1));
 	dp->e2d_namlen = 2;
 	dp->e2d_type = EXT2_FT_DIR;
 	memcpy(dp->e2d_name, "..", 2);
+	if (le32toh(disk.d_fs.e2fs_features_rocompat) &
+	    EXT2F_ROCOMPAT_METADATA_CKSUM) {
+		dp->e2d_reclen =
+		    htole16(bsize - 2 * EXT2_DIR_REC_LEN(1) -
+		    sizeof(struct ext2fs_direct_tail));
+		ext2_init_dirent_tail(EXT2_DIRENT_TAIL(buf, bsize));
+		ext2_dirent_csum_update(disk.d_csum_seed, lf, 0, buf, bsize);
+	} else
+		dp->e2d_reclen = htole16(bsize - EXT2_DIR_REC_LEN(1));
 	if (ext2fs_bwrite(&disk, b, buf, bsize) != (ssize_t)bsize) {
 		free(buf);
 		return (0);
@@ -241,6 +249,18 @@ setdotdot(ino_t dir, ino_t parent, ino_t *oldp)
 		    dp->e2d_name[1] == '.') {
 			*oldp = le32toh(dp->e2d_ino);
 			dp->e2d_ino = htole32((uint32_t)parent);
+			if ((le32toh(disk.d_fs.e2fs_features_rocompat) &
+			    EXT2F_ROCOMPAT_METADATA_CKSUM) != 0) {
+				struct ext2fs_dinode pdi;
+
+				if (ext2fs_iget(&disk, dir, &pdi) == 0) {
+					uint32_t gen = le32toh(pdi.e2di_gen);
+
+					ext2_dirent_csum_update(
+					    disk.d_csum_seed, dir, gen,
+					    buf, bsize);
+				}
+			}
 			if (ext2fs_bwrite(&disk, blks[0], buf, bsize) !=
 			    (ssize_t)bsize) {
 				free(buf);
