@@ -32,6 +32,7 @@ struct ext2fsd {
 	int		 d_version;	/* 2=ext2, 3=ext3, 4=ext4 */
 	struct ext2_gd	*d_gd;		/* block group descriptor table */
 	uint32_t	 d_gcount;	/* number of block groups */
+	uint32_t	 d_csum_seed;	/* metadata checksum seed */
 };
 
 #define	d_fs	d_sbunion.d_fs
@@ -92,5 +93,35 @@ ssize_t ext2fs_bwrite(struct ext2fsd *, uint64_t, const void *, size_t);
  */
 int ext2fs_iget(struct ext2fsd *, ino_t, struct ext2fs_dinode *);
 int ext2fs_iput(struct ext2fsd *, ino_t, const struct ext2fs_dinode *);
+int ext2fs_icsum(struct ext2fsd *, ino_t);
+
+/*
+ * Metadata checksums (ext2_csum.c, shared with the kernel ext2fs
+ * driver).  The seed comes from ext2_csum_seed() over the superblock.
+ */
+struct ext2fs_direct_tail;
+uint32_t ext2_csum_seed(const struct ext2fs *);
+int ext2_sb_csum_fits(const struct ext2fs *);
+int ext2_sb_csum_check(const struct ext2fs *);
+void ext2_sb_csum_update(struct ext2fs *);
+uint32_t ext2_ei_csum_value(uint32_t, uint32_t, uint32_t,
+    const struct ext2fs_dinode *, uint32_t);
+int ext2_ei_csum_check(uint32_t, uint32_t, uint32_t,
+    const struct ext2fs_dinode *, uint32_t);
+void ext2_ei_csum_update(uint32_t, uint32_t, uint32_t,
+    struct ext2fs_dinode *, uint32_t);
+int ext2_dirent_has_tail(const void *, uint32_t);
+int ext2_dirent_csum_check(uint32_t, uint32_t, uint32_t, void *, uint32_t);
+void ext2_dirent_csum_update(uint32_t, uint32_t, uint32_t, void *, uint32_t);
+void ext2_init_dirent_tail(struct ext2fs_direct_tail *);
+uint16_t ext2_gd_csum_value(uint32_t, uint32_t, const struct ext2_gd *,
+    uint16_t);
+uint16_t ext2_gd_csum_legacy(const uint8_t *, uint32_t,
+    const struct ext2_gd *, uint16_t);
+uint32_t ext2_bitmap_csum_value(uint32_t, const void *, uint32_t);
+void ext2_gd_bbitmap_csum_update(uint32_t, const void *, uint32_t,
+    struct ext2_gd *, uint16_t);
+void ext2_gd_ibitmap_csum_update(uint32_t, const void *, uint32_t,
+    struct ext2_gd *, uint16_t);
 
 #endif /* __LIBEXT2FS_H__ */
