@@ -121,10 +121,12 @@ checkdotdot(ino_t ino)
 		/* No entry references this directory: pass3's orphan. */
 		return;
 	}
+	uint64_t blk1[1];
+
 	bsize = 1024u << le32toh(disk.d_fs.e2fs_log_bsize);
-	blk = le32toh(di.e2di_blocks[0]);
-	if (blk == 0 || blk >= (uint64_t)maxfsblock)
+	if (dir_blocks(&di, blk1, 1) != 1 || blk1[0] >= (uint64_t)maxfsblock)
 		return;
+	blk = blk1[0];
 	buf = malloc(bsize);
 	if (buf == NULL)
 		return;
@@ -185,6 +187,7 @@ pass2(void)
 	for (ino = EXT2_ROOTINO; ino <= (ino_t)maxino; ino++) {
 		struct ext2fs_dinode di;
 		struct inostat *stp;
+		uint64_t blk1[1];
 
 		stp = getinostat(ino);
 		if (stp->ino_state != DSTATE && stp->ino_state != DFOUND)
@@ -193,7 +196,10 @@ pass2(void)
 			continue;
 		idesc.id_ino = ino;
 		idesc.id_entryno = 0;
-		idesc.id_firstblock = le32toh(di.e2di_blocks[0]);
+		if (dir_blocks(&di, blk1, 1) == 1)
+			idesc.id_firstblock = blk1[0];
+		else
+			idesc.id_firstblock = 0;
 		idesc.id_filesize = le32toh(di.e2di_size);
 		ckinode(&di, &idesc);
 	}

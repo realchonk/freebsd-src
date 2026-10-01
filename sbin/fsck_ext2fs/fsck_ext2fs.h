@@ -225,6 +225,7 @@ int	ckinode(struct ext2fs_dinode *, struct inodesc *);
 int	ginode(ino_t, struct ext2fs_dinode *);
 int	direntry_write(struct inodesc *);
 int	dir_add_entry(ino_t, const char *, int, ino_t);
+uint32_t dir_blocks(const struct ext2fs_dinode *, uint64_t *, uint32_t);
 
 /*
  * pass4.c
