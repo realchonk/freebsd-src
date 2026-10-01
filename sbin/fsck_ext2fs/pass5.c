@@ -54,11 +54,11 @@ pass5(void)
 {
 	struct ext2fs *fs = &disk.d_fs;
 	struct inodesc idesc;
-	char *bmap, *exp;
+	char *bmap, *exp, *meta;
 	uint64_t nfree, nifree;
 	uint32_t bsize, bpg, ipg, first, isize, firstino;
 	uint32_t bcount, gcount, gdsize, descpb, gdbcount, itb;
-	uint32_t incompat, g;
+	uint32_t incompat, rocompat, desc_size, g;
 	int gddirty, sbdirty;
 
 	bsize = 1024u << le32toh(fs->e2fs_log_bsize);
@@ -73,21 +73,18 @@ pass5(void)
 	    le32toh(fs->e2fs_first_ino);
 	itb = howmany(ipg * isize, bsize);
 	incompat = le32toh(fs->e2fs_features_incompat);
+	rocompat = le32toh(fs->e2fs_features_rocompat);
 	gdsize = (incompat & EXT2F_INCOMPAT_64BIT) != 0 ?
 	    E2FS_64BIT_GD_SIZE : E2FS_REV0_GD_SIZE;
+	desc_size = le16toh(fs->e3fs_desc_size);
+	if (desc_size < gdsize)
+		desc_size = gdsize;
 	descpb = bsize / gdsize;
 	gdbcount = howmany(gcount, descpb);
 
-	/*
-	 * META_BG and FLEX_BG move metadata outside the group that owns
-	 * it, which the expected-map computation below does not track;
-	 * METADATA_CKSUM bitmaps would lose their checksums when written.
-	 */
-	if (incompat & (EXT2F_INCOMPAT_META_BG | EXT2F_INCOMPAT_FLEX_BG) ||
-	    (le32toh(fs->e2fs_features_rocompat) &
-	    EXT2F_ROCOMPAT_METADATA_CKSUM) != 0) {
-		pwarn("META_BG/FLEX_BG/METADATA_CKSUM NOT SUPPORTED; "
-		    "PASS 5 SKIPPED\n");
+	/* META_BG relocates the descriptor table itself, untracked here. */
+	if (incompat & EXT2F_INCOMPAT_META_BG) {
+		pwarn("META_BG NOT SUPPORTED; PASS 5 SKIPPED\n");
 		return;
 	}
 
@@ -97,6 +94,28 @@ pass5(void)
 
 	if ((bmap = malloc(bsize)) == NULL || (exp = malloc(bsize)) == NULL)
 		err(8, "cannot allocate bitmap buffers");
+	if ((meta = calloc(howmany(maxfsblock, 8) + 1, 1)) == NULL)
+		err(8, "cannot allocate metadata map");
+
+	/*
+	 * Metadata map over the whole filesystem: every group's bitmaps
+	 * and inode table, and the superblock and descriptor-table blocks
+	 * of groups carrying backups, wherever those blocks physically
+	 * live (FLEX_BG moves them out of their nominal group).
+	 */
+	for (g = 0; g < gcount; g++) {
+		struct ext2_gd *gd = &disk.d_gd[g];
+		uint64_t gfirst = first + (uint64_t)g * bpg;
+		uint32_t i;
+
+		setbit(meta, le32toh(gd->ext2bgd_b_bitmap));
+		setbit(meta, le32toh(gd->ext2bgd_i_bitmap));
+		for (i = 0; i < itb; i++)
+			setbit(meta, le32toh(gd->ext2bgd_i_tables) + i);
+		if (ext2fs_cg_hassb(&disk, g))
+			for (i = 0; i <= gdbcount; i++)
+				setbit(meta, gfirst + i);
+	}
 
 	nfree = nifree = 0;
 	gddirty = sbdirty = 0;
@@ -113,22 +132,22 @@ pass5(void)
 
 		/*
 		 * Expected block map: blocks claimed by inodes, plus the
-		 * group's metadata: bitmaps, inode table, and for groups
-		 * carrying a backup, the superblock and descriptor table.
+		 * metadata that physically lives in this group.
 		 */
 		memset(exp, 0, bsize);
-		setbit(exp, le32toh(gd->ext2bgd_b_bitmap) - gfirst);
-		setbit(exp, le32toh(gd->ext2bgd_i_bitmap) - gfirst);
-		for (i = 0; i < itb; i++)
-			setbit(exp, le32toh(gd->ext2bgd_i_tables) - gfirst + i);
-		if (ext2fs_cg_hassb(&disk, g))
-			for (i = 0; i <= gdbcount; i++)
-				setbit(exp, i);
 		for (i = 0; i < gblocks; i++)
-			if (testbmap(gfirst + i))
+			if (isset(meta, gfirst + i) || testbmap(gfirst + i))
 				setbit(exp, i);
 		bmppad(exp, gblocks, bsize);
 
+		if (le16toh(gd->ext4bgd_flags) & EXT2_BG_BLOCK_UNINIT) {
+			/* Bitmap never written: zeros are legitimate. */
+			free_cnt = 0;
+			for (i = 0; i < gblocks; i++)
+				if (isclr(exp, i))
+					free_cnt++;
+			goto bcounters;
+		}
 		if (ext2fs_bread(&disk, le32toh(gd->ext2bgd_b_bitmap), bmap,
 		    bsize) != (ssize_t)bsize) {
 			pwarn("GROUP %u: BLOCK BITMAP UNREADABLE\n", g);
@@ -153,13 +172,20 @@ pass5(void)
 		if (bmdiff != 0 && dofix(&idesc, "FIX BLOCK BITMAP") != 0) {
 			memcpy(bmap, exp, bsize);
 			if (ext2fs_bwrite(&disk, le32toh(gd->ext2bgd_b_bitmap),
-			    bmap, bsize) == (ssize_t)bsize)
+			    bmap, bsize) == (ssize_t)bsize) {
 				fsmodified = 1;
-			else
+				if (rocompat & EXT2F_ROCOMPAT_METADATA_CKSUM) {
+					ext2_gd_bbitmap_csum_update(
+					    disk.d_csum_seed, bmap, bpg / 8,
+					    gd, desc_size);
+					gddirty = 1;
+				}
+			} else
 				pwarn("GROUP %u: BLOCK BITMAP WRITE FAILED\n",
 				    g);
 		}
 
+bcounters:
 		if (free_cnt != gd_nbfree(gd)) {
 			pwarn("GROUP %u: FREE BLOCK COUNT WRONG IN DESCRIPTOR "
 			    "(computed %u, descriptor %u)\n", g, free_cnt,
@@ -193,6 +219,21 @@ inodebitmap:
 		}
 		bmppad(exp, ipg, bsize);
 
+		if (le16toh(gd->ext4bgd_flags) & EXT2_BG_INODE_UNINIT) {
+			/* Bitmap never written: zeros are legitimate. */
+			nifree += ifree_cnt;
+			if (ndirs != gd_ndirs(gd)) {
+				pwarn("GROUP %u: DIRECTORY COUNT WRONG IN "
+				    "DESCRIPTOR (computed %u, descriptor %u)\n",
+				    g, ndirs, gd_ndirs(gd));
+				if (dofix(&idesc, "FIX") != 0) {
+					gd_set16(&gd->ext2bgd_ndirs,
+					    &gd->ext4bgd_ndirs_hi, ndirs);
+					gddirty = 1;
+				}
+			}
+			continue;
+		}
 		if (ext2fs_bread(&disk, le32toh(gd->ext2bgd_i_bitmap), bmap,
 		    bsize) != (ssize_t)bsize) {
 			pwarn("GROUP %u: INODE BITMAP UNREADABLE\n", g);
@@ -215,9 +256,15 @@ inodebitmap:
 		if (bmdiff != 0 && dofix(&idesc, "FIX INODE BITMAP") != 0) {
 			memcpy(bmap, exp, bsize);
 			if (ext2fs_bwrite(&disk, le32toh(gd->ext2bgd_i_bitmap),
-			    bmap, bsize) == (ssize_t)bsize)
+			    bmap, bsize) == (ssize_t)bsize) {
 				fsmodified = 1;
-			else
+				if (rocompat & EXT2F_ROCOMPAT_METADATA_CKSUM) {
+					ext2_gd_ibitmap_csum_update(
+					    disk.d_csum_seed, bmap, ipg / 8,
+					    gd, desc_size);
+					gddirty = 1;
+				}
+			} else
 				pwarn("GROUP %u: INODE BITMAP WRITE FAILED\n",
 				    g);
 		}
@@ -246,6 +293,7 @@ inodebitmap:
 		}
 	}
 	free(bmap);
+	free(meta);
 	free(exp);
 
 	if (gddirty != 0) {
