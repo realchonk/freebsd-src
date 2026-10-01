@@ -92,6 +92,36 @@ ext2fs_iget(struct ext2fsd *disk, ino_t ino, struct ext2fs_dinode *di)
 	return (0);
 }
 
+/* Verify the metadata checksum of inode ino's on-disk slot. */
+int
+ext2fs_icsum(struct ext2fsd *disk, ino_t ino)
+{
+	uint32_t bsize, boff, isize;
+	uint64_t blk;
+	char *buf;
+	int rc;
+
+	if (ext2fs_inoloc(disk, ino, &blk, &boff, &isize) == -1) {
+		ERROR(disk, "invalid inode number");
+		return (-1);
+	}
+	bsize = 1024u << le32toh(disk->d_fs.e2fs_log_bsize);
+	if ((buf = malloc(bsize)) == NULL) {
+		ERROR(disk, "out of memory");
+		return (-1);
+	}
+	if (ext2fs_bread(disk, blk, buf, bsize) != (ssize_t)bsize) {
+		free(buf);
+		ERROR(disk, "inode read failed");
+		return (-1);
+	}
+	rc = ext2_ei_csum_check(disk->d_csum_seed, ino,
+	    le32toh(((const struct ext2fs_dinode *)(buf + boff))->e2di_gen),
+	    (const struct ext2fs_dinode *)(buf + boff), isize);
+	free(buf);
+	return (rc);
+}
+
 /* Write di back to inode ino. */
 int
 ext2fs_iput(struct ext2fsd *disk, ino_t ino, const struct ext2fs_dinode *di)
@@ -116,6 +146,16 @@ ext2fs_iput(struct ext2fsd *disk, ino_t ino, const struct ext2fs_dinode *di)
 		return (-1);
 	}
 	memcpy(buf + boff, di, isize < sizeof(*di) ? isize : sizeof(*di));
+	if (le32toh(disk->d_fs.e2fs_features_rocompat) &
+	    EXT2F_ROCOMPAT_METADATA_CKSUM) {
+		/* The checksum spans the full on-disk inode slot. */
+		const struct ext2fs_dinode *slot =
+		    (const struct ext2fs_dinode *)(buf + boff);
+
+		ext2_ei_csum_update(disk->d_csum_seed, ino,
+		    le32toh(slot->e2di_gen),
+		    (struct ext2fs_dinode *)(buf + boff), isize);
+	}
 	if (ext2fs_bwrite(disk, blk, buf, bsize) != (ssize_t)bsize) {
 		free(buf);
 		ERROR(disk, "inode write failed");

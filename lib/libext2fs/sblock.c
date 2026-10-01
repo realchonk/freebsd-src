@@ -151,6 +151,9 @@ ext2fs_sbwrite(struct ext2fsd *disk, off_t loc)
 {
 
 	ERROR(disk, NULL);
+	if (le32toh(disk->d_fs.e2fs_features_rocompat) &
+	    EXT2F_ROCOMPAT_METADATA_CKSUM)
+		ext2_sb_csum_update(&disk->d_fs);
 	if (pwrite(disk->d_fd, &disk->d_fs, SBLOCKSIZE, loc) != SBLOCKSIZE) {
 		ERROR(disk, "superblock write failed");
 		return (-1);

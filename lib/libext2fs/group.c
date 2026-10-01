@@ -169,6 +169,7 @@ ext2fs_gdread(struct ext2fsd *disk)
 
 	free(buf);
 	disk->d_gcount = gcount;
+	disk->d_csum_seed = ext2_csum_seed(fs);
 
 	/*
 	 * Every group has nonzero metadata block numbers inside the
@@ -205,8 +206,9 @@ int
 ext2fs_gdwrite(struct ext2fsd *disk)
 {
 	struct ext2fs *fs;
-	uint32_t incompat, bsize, bpg, first_dblock, gdsize, descpb, gdbcount;
-	uint32_t gcount, i, j;
+	uint32_t incompat, rocompat, bsize, bpg, first_dblock, gdsize;
+	uint32_t descpb, gdbcount, gcount, i, j;
+	uint16_t desc_size;
 	int has64, has_meta_bg;
 	char *buf;
 
@@ -219,6 +221,7 @@ ext2fs_gdwrite(struct ext2fsd *disk)
 	}
 
 	incompat = le32toh(fs->e2fs_features_incompat);
+	rocompat = le32toh(fs->e2fs_features_rocompat);
 	has64 = (incompat & EXT2F_INCOMPAT_64BIT) != 0;
 	has_meta_bg = (incompat & EXT2F_INCOMPAT_META_BG) != 0;
 
@@ -228,6 +231,9 @@ ext2fs_gdwrite(struct ext2fsd *disk)
 	(void)first_dblock;
 
 	gdsize = has64 ? E2FS_64BIT_GD_SIZE : E2FS_REV0_GD_SIZE;
+	desc_size = le16toh(fs->e3fs_desc_size);
+	if (desc_size < gdsize)
+		desc_size = gdsize;
 	descpb = bsize / gdsize;
 	gcount = disk->d_gcount;
 	gdbcount = howmany(gcount, descpb);
@@ -237,6 +243,17 @@ ext2fs_gdwrite(struct ext2fsd *disk)
 		ERROR(disk, "failed to allocate group descriptor buffer");
 		errno = ENOMEM;
 		return (-1);
+	}
+
+	if (rocompat & (EXT2F_ROCOMPAT_METADATA_CKSUM |
+	    EXT2F_ROCOMPAT_GDT_CSUM)) {
+		for (i = 0; i < gcount; i++)
+			disk->d_gd[i].ext4bgd_csum = (rocompat &
+			    EXT2F_ROCOMPAT_METADATA_CKSUM) ?
+			    ext2_gd_csum_value(disk->d_csum_seed, i,
+			    &disk->d_gd[i], desc_size) :
+			    ext2_gd_csum_legacy(fs->e2fs_uuid, i,
+			    &disk->d_gd[i], desc_size);
 	}
 
 	for (i = 0; i < gdbcount; i++) {
