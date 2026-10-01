@@ -170,8 +170,8 @@ findlf(void)
 {
 	struct ext2fs_dinode di;
 	struct ext2fs_direct_2 *dp;
-	uint32_t bsize, reclen, i, off;
-	uint64_t b;
+	uint32_t bsize, reclen, i, off, nblocks;
+	uint64_t b, blks[EXT2_NDIR_BLOCKS];
 	ino_t found = 0;
 	char *buf;
 
@@ -180,8 +180,9 @@ findlf(void)
 	bsize = 1024u << le32toh(disk.d_fs.e2fs_log_bsize);
 	if ((buf = malloc(bsize)) == NULL)
 		err(8, "cannot allocate directory buffer");
-	for (i = 0; i < EXT2_NDIR_BLOCKS && found == 0; i++) {
-		b = le32toh(di.e2di_blocks[i]);
+	nblocks = dir_blocks(&di, blks, EXT2_NDIR_BLOCKS);
+	for (i = 0; i < nblocks && found == 0; i++) {
+		b = blks[i];
 		if (b == 0 || b >= (uint64_t)maxfsblock)
 			continue;
 		if (ext2fs_bread(&disk, b, buf, bsize) != (ssize_t)bsize)
@@ -213,20 +214,20 @@ setdotdot(ino_t dir, ino_t parent, ino_t *oldp)
 {
 	struct ext2fs_dinode di;
 	struct ext2fs_direct_2 *dp;
+	uint64_t blks[1];
 	uint32_t bsize, reclen;
-	uint64_t b;
 	char *buf;
 
 	*oldp = 0;
 	if (ginode(dir, &di) != 0)
 		return (-1);
 	bsize = 1024u << le32toh(disk.d_fs.e2fs_log_bsize);
-	b = le32toh(di.e2di_blocks[0]);
-	if (b == 0 || b >= (uint64_t)maxfsblock)
+	if (dir_blocks(&di, blks, 1) != 1 ||
+	    blks[0] >= (uint64_t)maxfsblock)
 		return (-1);
 	if ((buf = malloc(bsize)) == NULL)
 		err(8, "cannot allocate directory buffer");
-	if (ext2fs_bread(&disk, b, buf, bsize) != (ssize_t)bsize) {
+	if (ext2fs_bread(&disk, blks[0], buf, bsize) != (ssize_t)bsize) {
 		free(buf);
 		return (-1);
 	}
@@ -240,7 +241,7 @@ setdotdot(ino_t dir, ino_t parent, ino_t *oldp)
 		    dp->e2d_name[1] == '.') {
 			*oldp = le32toh(dp->e2d_ino);
 			dp->e2d_ino = htole32((uint32_t)parent);
-			if (ext2fs_bwrite(&disk, b, buf, bsize) !=
+			if (ext2fs_bwrite(&disk, blks[0], buf, bsize) !=
 			    (ssize_t)bsize) {
 				free(buf);
 				return (-1);
@@ -325,9 +326,14 @@ reached:
 		ino = dstack[--dsp];
 		if (ginode(ino, &di) != 0)
 			continue;
+		uint64_t blk1[1];
+
 		idesc.id_ino = ino;
 		idesc.id_entryno = 0;
-		idesc.id_firstblock = le32toh(di.e2di_blocks[0]);
+		if (dir_blocks(&di, blk1, 1) == 1)
+			idesc.id_firstblock = blk1[0];
+		else
+			idesc.id_firstblock = 0;
 		idesc.id_filesize = le32toh(di.e2di_size);
 		ckinode(&di, &idesc);
 	}

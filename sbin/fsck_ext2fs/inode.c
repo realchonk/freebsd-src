@@ -181,6 +181,77 @@ dirscan(struct inodesc *idesc)
 }
 
 /*
+ * Collect up to max physical data blocks of one extent-tree node and
+ * its children, skipping the index blocks themselves; returns the
+ * number collected into *np.
+ */
+static void
+ext_blocks(char *node, uint64_t *blks, uint32_t max, uint32_t *np)
+{
+	struct ext4_extent_header *eh = (struct ext4_extent_header *)node;
+	uint32_t bsize;
+	char *buf;
+	uint32_t i, j;
+
+	bsize = 1024u << le32toh(disk.d_fs.e2fs_log_bsize);
+	if (le16toh(eh->eh_magic) != EXT4_EXT_MAGIC ||
+	    le16toh(eh->eh_ecount) > le16toh(eh->eh_max))
+		return;
+	if (le16toh(eh->eh_depth) == 0) {
+		struct ext4_extent *ex = (struct ext4_extent *)(node +
+		    sizeof(*eh));
+
+		for (i = 0; i < le16toh(eh->eh_ecount) && *np < max; i++) {
+			uint64_t start = ((uint64_t)le16toh(ex[i].e_start_hi)
+			    << 32) | le32toh(ex[i].e_start_lo);
+			uint32_t len = le16toh(ex[i].e_len) &
+			    (EXT_INIT_MAX_LEN - 1);
+
+			for (j = 0; j < len && *np < max; j++)
+				blks[(*np)++] = start + j;
+		}
+		return;
+	}
+
+	buf = malloc(bsize);
+	if (buf == NULL)
+		return;
+	{
+		struct ext4_extent_index *ix = (struct ext4_extent_index *)
+		    (node + sizeof(*eh));
+
+		for (i = 0; i < le16toh(eh->eh_ecount) && *np < max; i++) {
+			uint64_t leaf = ((uint64_t)le16toh(ix[i].ei_leaf_hi)
+			    << 32) | le32toh(ix[i].ei_leaf_lo);
+
+			if (ext2fs_bread(&disk, leaf, buf, bsize) ==
+			    (ssize_t)bsize)
+				ext_blocks(buf, blks, max, np);
+		}
+	}
+	free(buf);
+}
+
+/*
+ * The first max physical data blocks of the directory di, following
+ * either its block pointers or its extent tree.
+ */
+uint32_t
+dir_blocks(const struct ext2fs_dinode *di, uint64_t *blks, uint32_t max)
+{
+	uint32_t i, n = 0;
+
+	if (le32toh(di->e2di_flags) & EXT4_EXTENTS) {
+		ext_blocks((char *)di->e2di_blocks, blks, max, &n);
+		return (n);
+	}
+	for (i = 0; i < EXT2_NDIR_BLOCKS && n < max; i++)
+		if (le32toh(di->e2di_blocks[i]) != 0)
+			blks[n++] = le32toh(di->e2di_blocks[i]);
+	return (n);
+}
+
+/*
  * Write the in-memory directory block holding the entry that idesc
  * just visited (and possibly modified) back to disk.
  */
@@ -209,9 +280,9 @@ dir_add_entry(ino_t dirino, const char *name, int ftype, ino_t target)
 {
 	struct ext2fs_dinode di;
 	struct ext2fs_direct_2 *dp;
-	uint64_t b;
-	uint32_t bsize, need, nl, reclen, avail;
-	uint32_t i, off, slot = 0, lastoff;
+	uint64_t b, blks[EXT2_NDIR_BLOCKS];
+	uint32_t bsize, need, nl, reclen, avail, usable;
+	uint32_t i, off, nblocks, slot = 0, lastoff;
 	char *buf;
 	int found = 0;
 
@@ -222,19 +293,21 @@ dir_add_entry(ino_t dirino, const char *name, int ftype, ino_t target)
 	bsize = 1024u << le32toh(disk.d_fs.e2fs_log_bsize);
 	if ((buf = malloc(bsize)) == NULL)
 		err(8, "cannot allocate directory buffer");
+	nblocks = dir_blocks(&di, blks, EXT2_NDIR_BLOCKS);
 
-	for (i = 0; i < EXT2_NDIR_BLOCKS && found == 0; i++) {
-		b = le32toh(di.e2di_blocks[i]);
+	for (i = 0; i < nblocks && found == 0; i++) {
+		b = blks[i];
 		if (b == 0 || b >= (uint64_t)maxfsblock)
 			continue;
 		if (ext2fs_bread(&disk, b, buf, bsize) != (ssize_t)bsize)
 			continue;
+		usable = bsize;
 		lastoff = 0;
-		for (off = 0; off + EXT2_DIR_REC_LEN(0) <= bsize; ) {
+		for (off = 0; off + EXT2_DIR_REC_LEN(0) <= usable; ) {
 			dp = (struct ext2fs_direct_2 *)(buf + off);
 			reclen = le16toh(dp->e2d_reclen);
 			if (reclen < EXT2_DIR_REC_LEN(0) ||
-			    off + reclen > bsize)
+			    off + reclen > usable)
 				break;
 			if (le32toh(dp->e2d_ino) == 0 && reclen >= need) {
 				/* Unused entry with room. */
@@ -249,7 +322,7 @@ dir_add_entry(ino_t dirino, const char *name, int ftype, ino_t target)
 		if (found != 0)
 			break;
 		/* Split the slack of the last entry if it reaches the end. */
-		if (off == bsize && lastoff + EXT2_DIR_REC_LEN(0) <= bsize) {
+		if (off == usable && lastoff + EXT2_DIR_REC_LEN(0) <= usable) {
 			uint32_t lastlen;
 
 			dp = (struct ext2fs_direct_2 *)(buf + lastoff);
