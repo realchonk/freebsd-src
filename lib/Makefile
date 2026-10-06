@@ -57,6 +57,7 @@ SUBDIR=	${SUBDIR_BOOTSTRAP} \
 	libelftc \
 	libevent1 \
 	libexecinfo \
+	libext2fs \
 	libexpat \
 	libfetch \
 	libgcc_eh \
