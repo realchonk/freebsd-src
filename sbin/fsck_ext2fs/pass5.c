@@ -239,6 +239,27 @@ inodebitmap:
 			pwarn("GROUP %u: INODE BITMAP UNREADABLE\n", g);
 			continue;
 		}
+		/*
+		 * The never-used inode tail: inodes above the highest
+		 * used one.  Without GDT_CSUM the field stays zero, so
+		 * only maintained filesystems check it.
+		 */
+		if (rocompat & (EXT2F_ROCOMPAT_GDT_CSUM |
+	    EXT2F_ROCOMPAT_METADATA_CKSUM)) {
+		for (i = ipg; i > 0; i--)
+			if (isset(exp, i - 1))
+				break;
+		if (ipg - i != le16toh(gd->ext4bgd_i_unused)) {
+			pwarn("GROUP %u: UNUSED INODE COUNT WRONG IN "
+			    "DESCRIPTOR (computed %u, descriptor %u)\n", g,
+			    ipg - i, le16toh(gd->ext4bgd_i_unused));
+			if (dofix(&idesc, "FIX") != 0) {
+				gd_set16(&gd->ext4bgd_i_unused,
+				    &gd->ext4bgd_i_unused_hi, ipg - i);
+				gddirty = 1;
+			}
+		}
+		}
 		bmdiff = 0;
 		for (i = 0; i < ipg; i++) {
 			if (isset(exp, i) && isclr(bmap, i)) {
