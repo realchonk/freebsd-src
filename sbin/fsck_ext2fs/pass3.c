@@ -102,14 +102,15 @@ mklf(void)
 	struct ext2fs_dinode di;
 	struct ext2fs_direct_2 *dp;
 	struct inostat *stp;
-	uint32_t bsize;
-	uint64_t b;
+	uint32_t bsize, usable;
+	uint64_t b, b2;
 	ino_t lf;
 	char *buf;
 
 	lf = allocino();
 	b = allocblk();
-	if (lf == 0 || b == 0)
+	b2 = allocblk();
+	if (lf == 0 || b == 0 || b2 == 0)
 		return (0);
 	bsize = 1024u << le32toh(disk.d_fs.e2fs_log_bsize);
 	if ((buf = malloc(bsize)) == NULL)
@@ -131,7 +132,7 @@ mklf(void)
 	if (le32toh(disk.d_fs.e2fs_features_rocompat) &
 	    EXT2F_ROCOMPAT_METADATA_CKSUM) {
 		dp->e2d_reclen =
-		    htole16(bsize - 2 * EXT2_DIR_REC_LEN(1) -
+		    htole16(bsize - EXT2_DIR_REC_LEN(1) -
 		    sizeof(struct ext2fs_direct_tail));
 		ext2_init_dirent_tail(EXT2_DIRENT_TAIL(buf, bsize));
 		ext2_dirent_csum_update(disk.d_csum_seed, lf, 0, buf, bsize);
@@ -141,14 +142,35 @@ mklf(void)
 		free(buf);
 		return (0);
 	}
+
+	/* A second block of one unused entry, so that reattaching
+	 * orphans into lost+found finds room for their entries. */
+	memset(buf, 0, bsize);
+	usable = bsize;
+	if (le32toh(disk.d_fs.e2fs_features_rocompat) &
+	    EXT2F_ROCOMPAT_METADATA_CKSUM) {
+		usable = bsize - sizeof(struct ext2fs_direct_tail);
+		ext2_init_dirent_tail(EXT2_DIRENT_TAIL(buf, bsize));
+	}
+	dp = (struct ext2fs_direct_2 *)buf;
+	dp->e2d_reclen = htole16(usable);
+	if ((le32toh(disk.d_fs.e2fs_features_rocompat) &
+	    EXT2F_ROCOMPAT_METADATA_CKSUM) != 0)
+		ext2_dirent_csum_update(disk.d_csum_seed, lf, 0, buf,
+		    bsize);
+	if (ext2fs_bwrite(&disk, b2, buf, bsize) != (ssize_t)bsize) {
+		free(buf);
+		return (0);
+	}
 	free(buf);
 
 	memset(&di, 0, sizeof(di));
 	di.e2di_mode = htole16(S_IFDIR | 0755);
 	di.e2di_nlink = htole16(2);
-	di.e2di_size = htole32(bsize);
-	di.e2di_nblock = htole32(bsize / 512);
+	di.e2di_size = htole32(2 * bsize);
+	di.e2di_nblock = htole32(2 * bsize / 512);
 	di.e2di_blocks[0] = htole32((uint32_t)b);
+	di.e2di_blocks[1] = htole32((uint32_t)b2);
 	if (ext2fs_iput(&disk, lf, &di) != 0)
 		return (0);
 	if (dir_add_entry(EXT2_ROOTINO, "lost+found", EXT2_FT_DIR, lf) != 0)
@@ -274,6 +296,42 @@ setdotdot(ino_t dir, ino_t parent, ino_t *oldp)
 	return (-1);
 }
 
+/* The inode '..' points at, 0 when it cannot be read. */
+static ino_t
+dotdot_target(ino_t dir)
+{
+	struct ext2fs_dinode di;
+	struct ext2fs_direct_2 *dp;
+	uint64_t blks[1];
+	uint32_t bsize, reclen;
+	char *buf;
+	ino_t target = 0;
+
+	if (ginode(dir, &di) != 0)
+		return (0);
+	bsize = 1024u << le32toh(disk.d_fs.e2fs_log_bsize);
+	if (dir_blocks(&di, blks, 1) != 1 ||
+	    blks[0] >= (uint64_t)maxfsblock)
+		return (0);
+	if ((buf = malloc(bsize)) == NULL)
+		err(8, "cannot allocate directory buffer");
+	if (ext2fs_bread(&disk, blks[0], buf, bsize) != (ssize_t)bsize) {
+		free(buf);
+		return (0);
+	}
+	dp = (struct ext2fs_direct_2 *)buf;
+	reclen = le16toh(dp->e2d_reclen);
+	if (reclen >= EXT2_DIR_REC_LEN(1) &&
+	    reclen + EXT2_DIR_REC_LEN(2) <= bsize) {
+		dp = (struct ext2fs_direct_2 *)(buf + reclen);
+		if (dp->e2d_namlen == 2 && dp->e2d_name[0] == '.' &&
+		    dp->e2d_name[1] == '.')
+			target = le32toh(dp->e2d_ino);
+	}
+	free(buf);
+	return (target);
+}
+
 /*
  * Reconnect an orphan directory into lost+found: name it by its inode
  * number, transfer its '..' reference, and account the new entry.
@@ -372,6 +430,15 @@ reached:
 				goto reached;
 			}
 			pwarn("RECONNECT I=%ju FAILED\n", (uintmax_t)ino);
+		}
+		if (getinostat(ino)->ino_state == DSTATE) {
+			/* Clearing the directory also removes its '..'
+			 * reference, which pass 2 accounted. */
+			ino_t dd = dotdot_target(ino);
+
+			if (dd != 0 && dd <= (ino_t)maxino &&
+			    getinostat(dd)->ino_state != USTATE)
+				getinostat(dd)->ino_linkcnt++;
 		}
 		clri(&idesc, ino, "DIR");
 	}
