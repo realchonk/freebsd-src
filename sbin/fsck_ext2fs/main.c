@@ -117,8 +117,12 @@ checkfilesys(const char *filesys)
 	ckfini(0);
 	if (fsmodified)
 		printf("***** FILE SYSTEM WAS MODIFIED *****\n");
+	/*
+	 * Like fsck_ffs: a preen run that fixed everything is a success,
+	 * so the boot scripts can rely on the exit status.
+	 */
 	ret = 0;
-	if (fsmodified)
+	if (fsmodified && !preen)
 		ret |= 1;			/* filesystem modified */
 	if (uncorrected)
 		ret |= 4;			/* errors left uncorrected */
