@@ -98,6 +98,9 @@ The exit status is a bit mask:
 4 that problems were left uncorrected,
 8 an operational error,
 and 16 a usage error.
+In preen mode a file system that was fully repaired exits 0,
+like
+.Xr fsck_ffs 8 .
 .Sh SEE ALSO
 .Xr ext2fs 4 ,
 .Xr fsck 8 ,
