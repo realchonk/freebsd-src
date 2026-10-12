@@ -1,3 +1,5 @@
+.include <src.opts.mk>
+
 PACKAGE =	ext2fs
 PROG =		fsck_ext2fs
 SRCS =		main.c setup.c fsutil.c inode.c pass1.c pass2.c pass3.c pass4.c pass5.c globals.c
