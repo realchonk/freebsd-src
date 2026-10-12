@@ -6,4 +6,7 @@ MAN =		fsck_ext2fs.8
 WARNS ?=	3
 CFLAGS +=	-I${.CURDIR}
 
+HAS_TESTS=	yes
+SUBDIR.${MK_TESTS}=	tests
+
 .include <bsd.prog.mk>
