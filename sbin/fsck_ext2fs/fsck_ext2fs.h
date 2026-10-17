@@ -208,6 +208,7 @@ void	fsckinit(void);
 int	openfilesys(const char *);
 int	readsb(void);
 int	setup(const char *);
+void	journal_check(void);
 
 /*
  * fsutil.c
