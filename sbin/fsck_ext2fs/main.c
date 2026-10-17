@@ -9,6 +9,7 @@
 
 #include <err.h>
 #include <inttypes.h>
+#include <sys/errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -65,6 +66,81 @@ main(int argc, char *argv[])
 	return (ret);
 }
 
+/*
+ * Replay the journal when the filesystem says it needs recovery.
+ * Without a replay the passes would check the pre-journal state of
+ * everything the log still holds; an unparsable journal can be reset
+ * (losing the log) like e2fsck does.  Read-only runs only report.
+ */
+void
+journal_check(void)
+{
+	struct ext2fs_journal_info info;
+	struct inodesc idesc;
+	struct ext2fs *fs = &disk.d_fs;
+
+	if ((le32toh(fs->e2fs_features_incompat) &
+	    EXT2F_INCOMPAT_RECOVER) == 0)
+		return;
+	if ((le32toh(fs->e2fs_features_compat) & EXT2F_COMPAT_HASJOURNAL)
+	    == 0) {
+		/* A stale flag with no journal behind it. */
+		pwarn("NEEDS RECOVERY FLAG SET WITHOUT JOURNAL\n");
+		memset(&idesc, 0, sizeof(idesc));
+		idesc.id_fix = nflag ? IGNORE : DONTKNOW;
+		if (dofix(&idesc, "CLEAR FLAG") != 0) {
+			fs->e2fs_features_incompat = htole32(
+			    le32toh(fs->e2fs_features_incompat) &
+			    ~EXT2F_INCOMPAT_RECOVER);
+			if (ext2fs_sbwrite(&disk, disk.d_sblockloc) == 0)
+				fsmodified = 1;
+		}
+		return;
+	}
+	if (nflag) {
+		pwarn("JOURNAL RECOVERY NEEDED; RUN WITHOUT -n\n");
+		uncorrected = 1;
+		return;
+	}
+	switch (ext2fs_journal_replay(&disk, &info)) {
+	case 0:
+		if (info.ji_trans == 0)
+			pwarn("RECOVERY FLAG SET BUT JOURNAL EMPTY\n");
+		else
+			pwarn("REPLAYED JOURNAL: %u TRANSACTION%s, "
+			    "%u BLOCK%s\n", info.ji_trans,
+			    info.ji_trans == 1 ? "" : "S", info.ji_blocks,
+			    info.ji_blocks == 1 ? "" : "S");
+		break;
+	case ENXIO:
+		pwarn("EXTERNAL JOURNAL; REPLAY NOT SUPPORTED\n");
+		uncorrected = 1;
+		return;
+	default:
+		pwarn("JOURNAL UNREADABLE\n");
+		memset(&idesc, 0, sizeof(idesc));
+		idesc.id_fix = nflag ? IGNORE : DONTKNOW;
+		if (dofix(&idesc, "RESET JOURNAL") == 0) {
+			uncorrected = 1;
+			return;
+		}
+		if (ext2fs_journal_reset(&disk) != 0) {
+			pwarn("JOURNAL RESET FAILED\n");
+			uncorrected = 1;
+			return;
+		}
+		pwarn("JOURNAL RESET\n");
+		break;
+	}
+
+	fs->e2fs_features_incompat = htole32(
+	    le32toh(fs->e2fs_features_incompat) & ~EXT2F_INCOMPAT_RECOVER);
+	if (ext2fs_sbwrite(&disk, disk.d_sblockloc) == 0)
+		fsmodified = 1;
+	else
+		pwarn("SUPERBLOCK WRITE FAILED\n");
+}
+
 int
 checkfilesys(const char *filesys)
 {
@@ -87,6 +163,7 @@ checkfilesys(const char *filesys)
 	}
 
 	printf("** Last Mounted %s\n", disk.d_fs.e2fs_fsmnt);
+	journal_check();
 	pass1();
 	pass2();
 	pass3();

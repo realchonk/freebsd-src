@@ -22,6 +22,16 @@ The
 utility checks and repairs ext2, ext3, and ext4 file systems.
 It is the ext2 counterpart of
 .Xr fsck_ffs 8 .
+Before the checking passes, the journal of an ext3 or ext4 file
+system flagged as needing recovery is replayed: the committed
+transactions of the log are written back and the log emptied,
+like
+.Xr e2fsck 8
+does.
+An unparsable journal can be reset instead, which loses the log
+but leaves the file system checkable; with
+.Fl n
+the journal is only reported, never replayed.
 .Pp
 The
 .Ar filesys
