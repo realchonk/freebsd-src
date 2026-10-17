@@ -89,6 +89,17 @@ ssize_t ext2fs_bread(struct ext2fsd *, uint64_t, void *, size_t);
 ssize_t ext2fs_bwrite(struct ext2fsd *, uint64_t, const void *, size_t);
 
 /*
+ * journal.c
+ */
+struct ext2fs_journal_info {
+	uint32_t	ji_ino;		/* the journal inode */
+	uint32_t	ji_trans;	/* transactions replayed */
+	uint32_t	ji_blocks;	/* data blocks applied */
+};
+int ext2fs_journal_replay(struct ext2fsd *, struct ext2fs_journal_info *);
+int ext2fs_journal_reset(struct ext2fsd *);
+
+/*
  * inode.c
  */
 int ext2fs_iget(struct ext2fsd *, ino_t, struct ext2fs_dinode *);
