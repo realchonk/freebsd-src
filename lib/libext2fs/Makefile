@@ -9,7 +9,8 @@ SRCS =		type.c	\
 		sblock.c \
 		group.c \
 		block.c \
-		inode.c
+		inode.c \
+		journal.c
 
 # Pull in the dual-mode superblock reader and metadata checksum code
 # shared with the kernel ext2fs driver, mirroring the way libufs
