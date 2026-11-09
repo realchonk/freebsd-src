@@ -67,6 +67,7 @@ SUBDIR=adjkerntz \
 	swapon \
 	sysctl \
 	tunefs \
+	tunefs_ext2fs \
 	umbctl \
 	umount
 
