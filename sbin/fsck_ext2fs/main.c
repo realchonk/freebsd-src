@@ -209,6 +209,6 @@ checkfilesys(const char *filesys)
 void
 usage(void)
 {
-	(void)fprintf(stderr, "usage: fsck_ext2fs [-b #] [-dfnpy] filesys\n");
+	(void)fprintf(stderr, "usage: fsck_ext2fs [-b #] [-Cdfnpy] filesys\n");
 	exit(EEXIT);
 }

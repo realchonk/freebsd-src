@@ -5,7 +5,7 @@
 .\" This software was developed by Benjamin Stürz <benni@stuerz.xyz>
 .\" under sponsorship from the FreeBSD Foundation.
 .\"
-.Dd September 21, 2026
+.Dd November 9, 2026
 .Dt FSCK_EXT2FS 8
 .Os
 .Sh NAME
@@ -71,10 +71,11 @@ or
 is given.
 File systems using the
 .Dq META_BG
-or
+feature are checked with the group summary pass skipped, since the
+relocated descriptor table is not yet supported.
+The
 .Dq FLEX_BG
-features are checked with the group summary pass skipped, since the
-metadata layout of those features is not yet supported.
+feature is supported.
 .Pp
 The options are as follows:
 .Bl -tag -width indent
@@ -106,16 +107,15 @@ answer to all repairs.
 The exit status is a bit mask:
 1 indicates that the file system was modified,
 4 that problems were left uncorrected,
-8 an operational error,
-and 16 a usage error.
+and 8 an operational error (including usage errors).
 In preen mode a file system that was fully repaired exits 0,
 like
 .Xr fsck_ffs 8 .
 .Sh SEE ALSO
 .Xr ext2fs 4 ,
+.Xr dumpfs_ext2fs 8 ,
 .Xr fsck 8 ,
 .Xr fsck_ffs 8 ,
-.Xr dumpfs_ext2fs 8 ,
 .Xr newfs_ext2fs 8
 .Sh HISTORY
 The
