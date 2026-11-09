@@ -1,0 +1,30 @@
+# ./ext2.img
+magic	ef53	(ext2)	rev	1
+last write time	Mon Nov  9 19:23:55 2026
+last mount time	Thu Jan  1 00:00:00 1970
+block size	1024	log block size	0	first data block	1
+total blocks	16384	reserved blocks	819	free blocks	15211
+total inodes	4096	free inodes	4085
+blocks/group	8192	frags/group	8192	inodes/group	2048
+inode size	256	first inode	11	block group nr	0
+mount count	0	max mount count	65535
+last checked	Mon Nov  9 19:23:55 2026
+check interval	0	state	0x1	behavior on errors	0x1
+creator OS	0x3
+compat     0x000038 ext_attr resize_inode dir_index
+incompat   0x000002 filetype
+ro_compat  0x000003 sparse_super large_file
+volume name	FIXTURE
+last mounted on	
+UUID	12345678-1234-5678-1234-567812345678
+
+bg 0:  (blocks 1-8192)
+block bitmap	66	inode bitmap	67	inode table	68-579
+free blocks	7599	free inodes	2037	directories	2
+flags	none	unused inodes	0
+
+bg 1:  (blocks 8193-16383)
+block bitmap	8258	inode bitmap	8259	inode table	8260-8771
+free blocks	7612	free inodes	2048	directories	0
+flags	none	unused inodes	0
+
