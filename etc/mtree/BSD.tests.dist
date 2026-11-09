@@ -491,6 +491,10 @@
         ..
         dhclient
         ..
+        dumpfs_ext2fs
+        ..
+        fsck_ext2fs
+        ..
         fsck_msdosfs
         ..
         growfs
@@ -504,6 +508,8 @@
         md5
         ..
         mdconfig
+        ..
+        newfs_ext2fs
         ..
         newfs_msdos
         ..
