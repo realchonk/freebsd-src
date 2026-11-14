@@ -115,12 +115,17 @@ again:	if ((ret = stat(name, &st)) < 0) {
 
 int ext2fs_disk_fillout(struct ext2fsd *disk, const char *name)
 {
+	const char *error;
+
 	if (ext2fs_disk_fillout_blank(disk, name) == -1)
 		return -1;
 
 	if (ext2fs_sbread(disk) == -1) {
-		ERROR(disk, "could not read superblock to fill out disk");
+		error = disk->d_error;
+		if (error == NULL)
+			error = "could not read superblock";
 		ext2fs_disk_close(disk);
+		disk->d_error = error;
 		return -1;
 	}
 
