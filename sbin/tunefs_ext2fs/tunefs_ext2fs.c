@@ -15,11 +15,23 @@
 
 #include <ctype.h>
 #include <err.h>
+#include <errno.h>
+#include <inttypes.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
+#include <libext2fs.h>
+
+static struct ext2fsd disk;
+
+static const char *errbehavior(uint16_t);
+static void printfs(void);
+static const char *timestr(time_t);
+static void uuidstr(const uint8_t *, char *, size_t);
 static void usage(void) __dead2;
 
 int
@@ -152,10 +164,101 @@ main(int argc, char *argv[])
 		usage();
 
 	special = argv[0];
-	(void)special;
+	if (ext2fs_disk_fillout(&disk, special) == -1) {
+		if (disk.d_error != NULL)
+			errx(11, "%s: %s", special, disk.d_error);
+		if (errno != 0)
+			err(12, "%s", special);
+		errx(12, "%s: unknown error", special);
+	}
+	if (pflag) {
+		printfs();
+		ext2fs_disk_close(&disk);
+		exit(0);
+	}
 
-	/* TODO: open the file system and apply the requested changes. */
+	/* TODO: apply the requested changes. */
+	ext2fs_disk_close(&disk);
 	return (0);
+}
+
+static const char *
+errbehavior(uint16_t behavior)
+{
+
+	switch (behavior) {
+	case 1:
+		return ("continue");
+	case 2:
+		return ("remount-ro");
+	case 3:
+		return ("panic");
+	default:
+		return ("unknown");
+	}
+}
+
+static const char *
+timestr(time_t t)
+{
+	static char buf[26];
+	char *p;
+
+	p = ctime(&t);
+	if (p == NULL)
+		return ("unknown");
+	strlcpy(buf, p, sizeof(buf));
+	buf[strcspn(buf, "\n")] = '\0';
+	return (buf);
+}
+
+static void
+uuidstr(const uint8_t *u, char *buf, size_t len)
+{
+
+	snprintf(buf, len, "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-"
+	    "%02x%02x%02x%02x%02x%02x", u[0], u[1], u[2], u[3], u[4], u[5],
+	    u[6], u[7], u[8], u[9], u[10], u[11], u[12], u[13], u[14],
+	    u[15]);
+}
+
+static void
+printfs(void)
+{
+	struct ext2fs *fs;
+	char uuid[37];
+	uint64_t bcount, rbcount;
+	uint32_t percent;
+	time_t t;
+
+	fs = &disk.d_fs;
+	bcount = le32toh(fs->e2fs_bcount);
+	rbcount = le32toh(fs->e2fs_rbcount);
+	if (le32toh(fs->e2fs_features_incompat) & EXT2F_INCOMPAT_64BIT) {
+		bcount |= (uint64_t)le32toh(fs->e4fs_bcount_hi) << 32;
+		rbcount |= (uint64_t)le32toh(fs->e4fs_rbcount_hi) << 32;
+	}
+	percent = bcount != 0 ?
+	    (uint32_t)((rbcount * 100 + bcount / 2) / bcount) : 0;
+
+	warnx("%-52s %u", "mount count: (-C)",
+	    le16toh(fs->e2fs_mnt_count));
+	warnx("%-52s %u", "maximum mount count: (-c)",
+	    le16toh(fs->e2fs_max_mnt_count));
+	warnx("%-52s %s", "behavior on errors: (-e)",
+	    errbehavior(le16toh(fs->e2fs_beh)));
+	warnx("%-52s %u", "interval between checks: (-i)",
+	    le32toh(fs->e2fs_fsckintv));
+	warnx("%-52s %.16s", "volume label: (-L)", fs->e2fs_vname);
+	warnx("%-52s %.64s", "last mounted directory: (-M)", fs->e2fs_fsmnt);
+	warnx("%-52s %u%%", "minimum percentage of free space: (-m)",
+	    percent);
+	warnx("%-52s %ju", "reserved block count: (-r)",
+	    (uintmax_t)rbcount);
+	t = (time_t)le32toh(fs->e2fs_lastfsck);
+	warnx("%-52s %s", "last checked time: (-T)", timestr(t));
+	uuidstr(fs->e2fs_uuid, uuid, sizeof(uuid));
+	warnx("%-52s %s", "UUID: (-U)", uuid);
 }
 
 static void
