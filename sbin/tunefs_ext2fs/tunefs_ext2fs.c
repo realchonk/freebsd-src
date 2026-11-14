@@ -41,18 +41,19 @@ main(int argc, char *argv[])
 	const char *Mvalue, *Tvalue, *Uvalue;
 	const char *special;
 	const char *name;
+	struct ext2fs *fs;
 	int Cflag, cflag, eflag, iflag;
 	int Lflag, Mflag, mflag, rflag;
 	int Tflag, Uflag;
 	int pflag;
 	int Cvalue, cvalue, mvalue, rvalue;
-	int ch, found_arg, i;
+	int ch, changed, found_arg, i;
 
 	Cflag = cflag = eflag = iflag = Lflag = Mflag = mflag = rflag = 0;
 	Tflag = Uflag = pflag = 0;
 	Cvalue = cvalue = mvalue = rvalue = 0;
 	evalue = ivalue = Lvalue = Mvalue = Tvalue = Uvalue = NULL;
-	found_arg = 0;
+	changed = found_arg = 0;
 	while ((ch = getopt(argc, argv, "C:c:e:i:L:M:m:pr:T:U:")) != -1)
 		switch (ch) {
 
@@ -60,7 +61,7 @@ main(int argc, char *argv[])
 			found_arg++;
 			name = "mount count";
 			Cvalue = atoi(optarg);
-			if (Cvalue < 0)
+			if (Cvalue < 0 || Cvalue > UINT16_MAX)
 				errx(10, "bad %s (%s)", name, optarg);
 			Cflag = 1;
 			break;
@@ -177,7 +178,18 @@ main(int argc, char *argv[])
 		exit(0);
 	}
 
-	/* TODO: apply the requested changes. */
+	fs = &disk.d_fs;
+	if (Cflag) {
+		fs->e2fs_mnt_count = htole16((uint16_t)Cvalue);
+		changed = 1;
+	}
+
+	if (changed) {
+		if (ext2fs_disk_write(&disk) == -1)
+			errx(12, "%s: %s", special, disk.d_error);
+		if (ext2fs_sbwrite(&disk, disk.d_sblockloc) == -1)
+			errx(13, "%s: %s", special, disk.d_error);
+	}
 	ext2fs_disk_close(&disk);
 	return (0);
 }
