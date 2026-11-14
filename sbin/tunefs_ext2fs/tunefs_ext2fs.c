@@ -70,7 +70,7 @@ main(int argc, char *argv[])
 			found_arg++;
 			name = "maximum mount count";
 			cvalue = atoi(optarg);
-			if (cvalue < 0)
+			if (cvalue < 0 || cvalue > UINT16_MAX)
 				errx(10, "bad %s (%s)", name, optarg);
 			cflag = 1;
 			break;
@@ -181,6 +181,10 @@ main(int argc, char *argv[])
 	fs = &disk.d_fs;
 	if (Cflag) {
 		fs->e2fs_mnt_count = htole16((uint16_t)Cvalue);
+		changed = 1;
+	}
+	if (cflag) {
+		fs->e2fs_max_mnt_count = htole16((uint16_t)cvalue);
 		changed = 1;
 	}
 
