@@ -187,6 +187,15 @@ main(int argc, char *argv[])
 		fs->e2fs_max_mnt_count = htole16((uint16_t)cvalue);
 		changed = 1;
 	}
+	if (eflag) {
+		if (strcmp(evalue, "continue") == 0)
+			fs->e2fs_beh = htole16(1);
+		else if (strcmp(evalue, "remount-ro") == 0)
+			fs->e2fs_beh = htole16(2);
+		else
+			fs->e2fs_beh = htole16(3);
+		changed = 1;
+	}
 
 	if (changed) {
 		if (ext2fs_disk_write(&disk) == -1)
