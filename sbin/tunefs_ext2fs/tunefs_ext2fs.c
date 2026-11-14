@@ -196,6 +196,11 @@ main(int argc, char *argv[])
 			fs->e2fs_beh = htole16(3);
 		changed = 1;
 	}
+	if (Lflag) {
+		memset(fs->e2fs_vname, 0, sizeof(fs->e2fs_vname));
+		strlcpy(fs->e2fs_vname, Lvalue, sizeof(fs->e2fs_vname));
+		changed = 1;
+	}
 
 	if (changed) {
 		if (ext2fs_disk_write(&disk) == -1)
