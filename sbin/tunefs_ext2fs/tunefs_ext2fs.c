@@ -40,7 +40,7 @@ static void usage(void) __dead2;
 int
 main(int argc, char *argv[])
 {
-	const char *evalue, *ivalue, *Lvalue;
+	const char *evalue, *Lvalue;
 	const char *Mvalue, *Tvalue, *Uvalue;
 	const char *special;
 	const char *name;
@@ -51,14 +51,14 @@ main(int argc, char *argv[])
 	int Tflag, Uflag;
 	int pflag;
 	int Cvalue, cvalue, mvalue;
-	uint64_t rvalue;
+	uint64_t ivalue, mult, rvalue;
 	int ch, changed, found_arg, i;
 
 	Cflag = cflag = eflag = iflag = Lflag = Mflag = mflag = rflag = 0;
 	Tflag = Uflag = pflag = 0;
 	Cvalue = cvalue = mvalue = 0;
-	rvalue = 0;
-	evalue = ivalue = Lvalue = Mvalue = Tvalue = Uvalue = NULL;
+	ivalue = mult = rvalue = 0;
+	evalue = Lvalue = Mvalue = Tvalue = Uvalue = NULL;
 	changed = found_arg = 0;
 	while ((ch = getopt(argc, argv, "C:c:e:i:L:M:m:pr:T:U:")) != -1)
 		switch (ch) {
@@ -96,7 +96,21 @@ main(int argc, char *argv[])
 		case 'i':
 			found_arg++;
 			name = "interval between checks";
-			ivalue = optarg;
+			errno = 0;
+			ivalue = strtoull(optarg, &end, 10);
+			if (optarg[0] == '-' || *optarg == '\0' || errno != 0)
+				errx(10, "bad %s (%s)", name, optarg);
+			if (*end == '\0' || strcmp(end, "d") == 0)
+				mult = 86400;
+			else if (strcmp(end, "m") == 0)
+				mult = 2592000;
+			else if (strcmp(end, "w") == 0)
+				mult = 604800;
+			else
+				errx(10, "bad %s (%s)", name, optarg);
+			if (ivalue > UINT32_MAX / mult)
+				errx(10, "bad %s (%s)", name, optarg);
+			ivalue *= mult;
 			iflag = 1;
 			break;
 
@@ -226,6 +240,10 @@ main(int argc, char *argv[])
 	}
 	if (mflag) {
 		fs_set_rbcount(fs, fs_bcount(fs) * (uint64_t)mvalue / 100);
+		changed = 1;
+	}
+	if (iflag) {
+		fs->e2fs_fsckintv = htole32((uint32_t)ivalue);
 		changed = 1;
 	}
 
