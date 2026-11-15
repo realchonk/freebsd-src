@@ -224,6 +224,10 @@ main(int argc, char *argv[])
 		fs_set_rbcount(fs, rvalue);
 		changed = 1;
 	}
+	if (mflag) {
+		fs_set_rbcount(fs, fs_bcount(fs) * (uint64_t)mvalue / 100);
+		changed = 1;
+	}
 
 	if (changed) {
 		if (ext2fs_disk_write(&disk) == -1)
