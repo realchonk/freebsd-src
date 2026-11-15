@@ -23,6 +23,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <uuid.h>
 
 #include <libext2fs.h>
 
@@ -41,11 +42,12 @@ int
 main(int argc, char *argv[])
 {
 	const char *evalue, *Lvalue;
-	const char *Mvalue, *Uvalue;
+	const char *Mvalue;
 	const char *special;
 	const char *name;
 	char *end;
 	struct ext2fs *fs;
+	uint8_t uuid[16];
 	int Cflag, cflag, eflag, iflag;
 	int Lflag, Mflag, mflag, rflag;
 	int Tflag, Uflag;
@@ -60,7 +62,8 @@ main(int argc, char *argv[])
 	Cvalue = cvalue = mvalue = 0;
 	tvalue = 0;
 	ivalue = mult = rvalue = 0;
-	evalue = Lvalue = Mvalue = Uvalue = NULL;
+	evalue = Lvalue = Mvalue = NULL;
+	memset(uuid, 0, sizeof(uuid));
 	changed = found_arg = 0;
 	while ((ch = getopt(argc, argv, "C:c:e:i:L:M:m:pr:T:U:")) != -1)
 		switch (ch) {
@@ -194,12 +197,32 @@ main(int argc, char *argv[])
 			break;
 		}
 
-		case 'U':
+		case 'U': {
+			uint32_t status;
+			uuid_t u;
+
 			found_arg++;
 			name = "UUID";
-			Uvalue = optarg;
+			if (strcmp(optarg, "clear") == 0) {
+				memset(uuid, 0, sizeof(uuid));
+			} else if (strcmp(optarg, "random") == 0) {
+				arc4random_buf(uuid, sizeof(uuid));
+				uuid[6] = (uuid[6] & 0x0f) | 0x40;
+				uuid[8] = (uuid[8] & 0x3f) | 0x80;
+			} else if (strcmp(optarg, "time") == 0) {
+				uuid_create(&u, &status);
+				if (status != uuid_s_ok)
+					errx(10, "bad %s (%s)", name, optarg);
+				uuid_enc_be(uuid, &u);
+			} else {
+				uuid_from_string(optarg, &u, &status);
+				if (status != uuid_s_ok)
+					errx(10, "bad %s (%s)", name, optarg);
+				uuid_enc_be(uuid, &u);
+			}
 			Uflag = 1;
 			break;
+		}
 
 		default:
 			usage();
@@ -268,6 +291,19 @@ main(int argc, char *argv[])
 	}
 	if (Tflag) {
 		fs->e2fs_lastfsck = htole32(tvalue);
+		changed = 1;
+	}
+	if (Uflag && memcmp(fs->e2fs_uuid, uuid, sizeof(fs->e2fs_uuid)) != 0) {
+		if ((le32toh(fs->e2fs_features_rocompat) &
+		    EXT2F_ROCOMPAT_METADATA_CKSUM) != 0 &&
+		    (le32toh(fs->e2fs_features_incompat) &
+		    EXT2F_INCOMPAT_CSUM_SEED) == 0) {
+			fs->e4fs_chksum_seed = htole32(ext2_csum_seed(fs));
+			fs->e2fs_features_incompat = htole32(
+			    le32toh(fs->e2fs_features_incompat) |
+			    EXT2F_INCOMPAT_CSUM_SEED);
+		}
+		memcpy(fs->e2fs_uuid, uuid, sizeof(fs->e2fs_uuid));
 		changed = 1;
 	}
 
