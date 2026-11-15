@@ -29,6 +29,9 @@
 static struct ext2fsd disk;
 
 static const char *errbehavior(uint16_t);
+static uint64_t fs_bcount(const struct ext2fs *);
+static uint64_t fs_rbcount(const struct ext2fs *);
+static void fs_set_rbcount(struct ext2fs *, uint64_t);
 static void printfs(void);
 static const char *timestr(time_t);
 static void uuidstr(const uint8_t *, char *, size_t);
@@ -41,17 +44,20 @@ main(int argc, char *argv[])
 	const char *Mvalue, *Tvalue, *Uvalue;
 	const char *special;
 	const char *name;
+	char *end;
 	struct ext2fs *fs;
 	int Cflag, cflag, eflag, iflag;
 	int Lflag, Mflag, mflag, rflag;
 	int Tflag, Uflag;
 	int pflag;
-	int Cvalue, cvalue, mvalue, rvalue;
+	int Cvalue, cvalue, mvalue;
+	uint64_t rvalue;
 	int ch, changed, found_arg, i;
 
 	Cflag = cflag = eflag = iflag = Lflag = Mflag = mflag = rflag = 0;
 	Tflag = Uflag = pflag = 0;
-	Cvalue = cvalue = mvalue = rvalue = 0;
+	Cvalue = cvalue = mvalue = 0;
+	rvalue = 0;
 	evalue = ivalue = Lvalue = Mvalue = Tvalue = Uvalue = NULL;
 	changed = found_arg = 0;
 	while ((ch = getopt(argc, argv, "C:c:e:i:L:M:m:pr:T:U:")) != -1)
@@ -139,8 +145,10 @@ main(int argc, char *argv[])
 		case 'r':
 			found_arg++;
 			name = "reserved block count";
-			rvalue = atoi(optarg);
-			if (rvalue < 0)
+			errno = 0;
+			rvalue = strtoull(optarg, &end, 0);
+			if (optarg[0] == '-' || *optarg == '\0' || errno != 0 ||
+			    *end != '\0')
 				errx(10, "bad %s (%s)", name, optarg);
 			rflag = 1;
 			break;
@@ -209,6 +217,13 @@ main(int argc, char *argv[])
 		strlcpy(fs->e2fs_fsmnt, Mvalue, sizeof(fs->e2fs_fsmnt));
 		changed = 1;
 	}
+	if (rflag) {
+		if (rvalue > fs_bcount(fs))
+			errx(10, "bad reserved block count (%ju)",
+			    (uintmax_t)rvalue);
+		fs_set_rbcount(fs, rvalue);
+		changed = 1;
+	}
 
 	if (changed) {
 		if (ext2fs_disk_write(&disk) == -1)
@@ -234,6 +249,37 @@ errbehavior(uint16_t behavior)
 	default:
 		return ("unknown");
 	}
+}
+
+static uint64_t
+fs_bcount(const struct ext2fs *fs)
+{
+	uint64_t bcount;
+
+	bcount = le32toh(fs->e2fs_bcount);
+	if (le32toh(fs->e2fs_features_incompat) & EXT2F_INCOMPAT_64BIT)
+		bcount |= (uint64_t)le32toh(fs->e4fs_bcount_hi) << 32;
+	return (bcount);
+}
+
+static uint64_t
+fs_rbcount(const struct ext2fs *fs)
+{
+	uint64_t rbcount;
+
+	rbcount = le32toh(fs->e2fs_rbcount);
+	if (le32toh(fs->e2fs_features_incompat) & EXT2F_INCOMPAT_64BIT)
+		rbcount |= (uint64_t)le32toh(fs->e4fs_rbcount_hi) << 32;
+	return (rbcount);
+}
+
+static void
+fs_set_rbcount(struct ext2fs *fs, uint64_t rbcount)
+{
+
+	fs->e2fs_rbcount = htole32((uint32_t)rbcount);
+	if (le32toh(fs->e2fs_features_incompat) & EXT2F_INCOMPAT_64BIT)
+		fs->e4fs_rbcount_hi = htole32((uint32_t)(rbcount >> 32));
 }
 
 static const char *
@@ -270,12 +316,8 @@ printfs(void)
 	time_t t;
 
 	fs = &disk.d_fs;
-	bcount = le32toh(fs->e2fs_bcount);
-	rbcount = le32toh(fs->e2fs_rbcount);
-	if (le32toh(fs->e2fs_features_incompat) & EXT2F_INCOMPAT_64BIT) {
-		bcount |= (uint64_t)le32toh(fs->e4fs_bcount_hi) << 32;
-		rbcount |= (uint64_t)le32toh(fs->e4fs_rbcount_hi) << 32;
-	}
+	bcount = fs_bcount(fs);
+	rbcount = fs_rbcount(fs);
 	percent = bcount != 0 ?
 	    (uint32_t)((rbcount * 100 + bcount / 2) / bcount) : 0;
 
