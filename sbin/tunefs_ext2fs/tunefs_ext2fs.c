@@ -41,7 +41,7 @@ int
 main(int argc, char *argv[])
 {
 	const char *evalue, *Lvalue;
-	const char *Mvalue, *Tvalue, *Uvalue;
+	const char *Mvalue, *Uvalue;
 	const char *special;
 	const char *name;
 	char *end;
@@ -51,14 +51,16 @@ main(int argc, char *argv[])
 	int Tflag, Uflag;
 	int pflag;
 	int Cvalue, cvalue, mvalue;
+	uint32_t tvalue;
 	uint64_t ivalue, mult, rvalue;
 	int ch, changed, found_arg, i;
 
 	Cflag = cflag = eflag = iflag = Lflag = Mflag = mflag = rflag = 0;
 	Tflag = Uflag = pflag = 0;
 	Cvalue = cvalue = mvalue = 0;
+	tvalue = 0;
 	ivalue = mult = rvalue = 0;
-	evalue = Lvalue = Mvalue = Tvalue = Uvalue = NULL;
+	evalue = Lvalue = Mvalue = Uvalue = NULL;
 	changed = found_arg = 0;
 	while ((ch = getopt(argc, argv, "C:c:e:i:L:M:m:pr:T:U:")) != -1)
 		switch (ch) {
@@ -167,12 +169,30 @@ main(int argc, char *argv[])
 			rflag = 1;
 			break;
 
-		case 'T':
+		case 'T': {
+			struct tm tm;
+			time_t t;
+			char *p;
+
 			found_arg++;
 			name = "last checked time";
-			Tvalue = optarg;
+			if (strcmp(optarg, "now") == 0) {
+				t = time(NULL);
+			} else {
+				memset(&tm, 0, sizeof(tm));
+				p = strptime(optarg, "%Y%m%d%H%M%S", &tm);
+				if (p == NULL || *p != '\0')
+					errx(10, "bad %s (%s)", name, optarg);
+				tm.tm_isdst = -1;
+				t = mktime(&tm);
+			}
+			if (t == (time_t)-1 || t < 0 ||
+			    (uint64_t)t > UINT32_MAX)
+				errx(10, "bad %s (%s)", name, optarg);
+			tvalue = (uint32_t)t;
 			Tflag = 1;
 			break;
+		}
 
 		case 'U':
 			found_arg++;
@@ -244,6 +264,10 @@ main(int argc, char *argv[])
 	}
 	if (iflag) {
 		fs->e2fs_fsckintv = htole32((uint32_t)ivalue);
+		changed = 1;
+	}
+	if (Tflag) {
+		fs->e2fs_lastfsck = htole32(tvalue);
 		changed = 1;
 	}
 
