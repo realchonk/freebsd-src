@@ -116,6 +116,9 @@ main(int argc, char *argv[])
 			found_arg++;
 			name = "last mounted directory";
 			Mvalue = optarg;
+			if (strlen(Mvalue) >= sizeof(disk.d_fs.e2fs_fsmnt))
+				errx(10, "bad %s. Length is longer than %zu.",
+				    name, sizeof(disk.d_fs.e2fs_fsmnt) - 1);
 			Mflag = 1;
 			break;
 
@@ -199,6 +202,11 @@ main(int argc, char *argv[])
 	if (Lflag) {
 		memset(fs->e2fs_vname, 0, sizeof(fs->e2fs_vname));
 		strlcpy(fs->e2fs_vname, Lvalue, sizeof(fs->e2fs_vname));
+		changed = 1;
+	}
+	if (Mflag) {
+		memset(fs->e2fs_fsmnt, 0, sizeof(fs->e2fs_fsmnt));
+		strlcpy(fs->e2fs_fsmnt, Mvalue, sizeof(fs->e2fs_fsmnt));
 		changed = 1;
 	}
 
