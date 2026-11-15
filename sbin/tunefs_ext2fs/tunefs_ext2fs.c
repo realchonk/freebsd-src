@@ -251,15 +251,15 @@ main(int argc, char *argv[])
 		strlcpy(fs->e2fs_fsmnt, Mvalue, sizeof(fs->e2fs_fsmnt));
 		changed = 1;
 	}
+	if (mflag) {
+		fs_set_rbcount(fs, fs_bcount(fs) * (uint64_t)mvalue / 100);
+		changed = 1;
+	}
 	if (rflag) {
 		if (rvalue > fs_bcount(fs))
 			errx(10, "bad reserved block count (%ju)",
 			    (uintmax_t)rvalue);
 		fs_set_rbcount(fs, rvalue);
-		changed = 1;
-	}
-	if (mflag) {
-		fs_set_rbcount(fs, fs_bcount(fs) * (uint64_t)mvalue / 100);
 		changed = 1;
 	}
 	if (iflag) {
