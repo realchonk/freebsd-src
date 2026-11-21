@@ -48,16 +48,17 @@ main(int argc, char *argv[])
 	char *end;
 	struct ext2fs *fs;
 	uint8_t uuid[16];
-	int Cflag, cflag, eflag, iflag;
+	int Cflag, cflag, eflag, fflag, iflag;
 	int Lflag, Mflag, mflag, rflag;
 	int Tflag, Uflag;
 	int pflag;
 	int Cvalue, cvalue, mvalue;
 	uint32_t tvalue;
 	uint64_t ivalue, mult, rvalue;
+	uint16_t state;
 	int ch, changed, found_arg, i;
 
-	Cflag = cflag = eflag = iflag = Lflag = Mflag = mflag = rflag = 0;
+	Cflag = cflag = eflag = fflag = iflag = Lflag = Mflag = mflag = rflag = 0;
 	Tflag = Uflag = pflag = 0;
 	Cvalue = cvalue = mvalue = 0;
 	tvalue = 0;
@@ -65,7 +66,7 @@ main(int argc, char *argv[])
 	evalue = Lvalue = Mvalue = NULL;
 	memset(uuid, 0, sizeof(uuid));
 	changed = found_arg = 0;
-	while ((ch = getopt(argc, argv, "C:c:e:i:L:M:m:pr:T:U:")) != -1)
+	while ((ch = getopt(argc, argv, "C:c:e:fi:L:M:m:pr:T:U:")) != -1)
 		switch (ch) {
 
 		case 'C':
@@ -96,6 +97,11 @@ main(int argc, char *argv[])
 				errx(10, "bad %s (options are %s)", name,
 				    "`continue', `remount-ro', or `panic'");
 			eflag = 1;
+			break;
+
+		case 'f':
+			found_arg++;
+			fflag = 1;
 			break;
 
 		case 'i':
@@ -247,6 +253,15 @@ main(int argc, char *argv[])
 	}
 
 	fs = &disk.d_fs;
+	if (!fflag) {
+		state = le16toh(fs->e2fs_state);
+		if ((le32toh(fs->e2fs_features_incompat) &
+		    EXT2F_INCOMPAT_RECOVER) != 0 ||
+		    (state & E2FS_ISCLEAN) == 0)
+			errx(1, "%s is not clean - run fsck", special);
+		if ((state & E2FS_ERRORS) != 0)
+			errx(1, "%s has errors - run fsck", special);
+	}
 	if (Cflag) {
 		fs->e2fs_mnt_count = htole16((uint16_t)Cvalue);
 		changed = 1;
@@ -428,7 +443,7 @@ usage(void)
 {
 	(void)fprintf(stderr,
 	    "usage: %s [-C mount-count] [-c max-mount-count]\n"
-	    "       [-e continue|remount-ro|panic] [-i interval]\n"
+	    "       [-e continue|remount-ro|panic] [-f] [-i interval]\n"
 	    "       [-L volume-label] [-M last-mounted-directory]\n"
 	    "       [-m reserved-percent] [-p] [-r reserved-blocks]\n"
 	    "       [-T last-check-time] [-U uuid] filesys\n", getprogname());
