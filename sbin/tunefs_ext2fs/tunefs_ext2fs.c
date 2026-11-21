@@ -36,8 +36,10 @@ static uint64_t fs_bcount(const struct ext2fs *);
 static uint64_t fs_rbcount(const struct ext2fs *);
 static void fs_set_rbcount(struct ext2fs *, uint64_t);
 static void printfs(void);
+static off_t sblockloc(const struct ext2fsd *, uint32_t);
 static const char *timestr(time_t);
 static void uuidstr(const uint8_t *, char *, size_t);
+static int write_superblocks(struct ext2fsd *);
 static void usage(void) __dead2;
 
 int
@@ -331,10 +333,44 @@ main(int argc, char *argv[])
 	if (changed) {
 		if (ext2fs_disk_write(&disk) == -1)
 			errx(12, "%s: %s", special, disk.d_error);
-		if (ext2fs_sbwrite(&disk, disk.d_sblockloc) == -1)
+		if (write_superblocks(&disk) == -1)
 			errx(13, "%s: %s", special, disk.d_error);
 	}
 	ext2fs_disk_close(&disk);
+	return (0);
+}
+
+static off_t
+sblockloc(const struct ext2fsd *disk, uint32_t cg)
+{
+	uint32_t bsize;
+	uint64_t first;
+
+	bsize = 1024u << le32toh(disk->d_fs.e2fs_log_bsize);
+	first = le32toh(disk->d_fs.e2fs_first_dblock) +
+	    (uint64_t)cg * le32toh(disk->d_fs.e2fs_bpg);
+	return ((off_t)first * bsize + (bsize == 1024 ? 0 : SBLOCKOFFSET));
+}
+
+static int
+write_superblocks(struct ext2fsd *disk)
+{
+	struct ext2fs *fs;
+	uint32_t cg;
+
+	fs = &disk->d_fs;
+	if (ext2fs_gdread(disk) == -1)
+		return (-1);
+	if (ext2fs_sbwrite(disk, disk->d_sblockloc) == -1)
+		return (-1);
+	for (cg = 1; cg < disk->d_gcount; cg++) {
+		if (!ext2fs_cg_hassb(disk, cg))
+			continue;
+		fs->e2fs_block_group_nr = htole16((uint16_t)cg);
+		if (ext2fs_sbwrite(disk, sblockloc(disk, cg)) == -1)
+			return (-1);
+	}
+	fs->e2fs_block_group_nr = htole16(0);
 	return (0);
 }
 
