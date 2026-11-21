@@ -12,6 +12,7 @@
  */
 
 #include <sys/param.h>
+#include <sys/mount.h>
 
 #include <ctype.h>
 #include <err.h>
@@ -26,6 +27,7 @@
 #include <uuid.h>
 
 #include <libext2fs.h>
+#include <mntopts.h>
 
 static struct ext2fsd disk;
 
@@ -47,6 +49,7 @@ main(int argc, char *argv[])
 	const char *name;
 	char *end;
 	struct ext2fs *fs;
+	struct statfs *mnt;
 	uint8_t uuid[16];
 	int Cflag, cflag, eflag, fflag, iflag;
 	int Lflag, Mflag, mflag, rflag;
@@ -251,6 +254,9 @@ main(int argc, char *argv[])
 		ext2fs_disk_close(&disk);
 		exit(0);
 	}
+
+	if ((mnt = getmntpoint(disk.d_name)) != NULL)
+		errx(1, "%s is mounted on %s", special, mnt->f_mntonname);
 
 	fs = &disk.d_fs;
 	if (!fflag) {
