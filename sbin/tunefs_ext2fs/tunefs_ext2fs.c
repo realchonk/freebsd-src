@@ -335,6 +335,8 @@ main(int argc, char *argv[])
 			errx(12, "%s: %s", special, disk.d_error);
 		if (write_superblocks(&disk) == -1)
 			errx(13, "%s: %s", special, disk.d_error);
+		if (fsync(disk.d_fd) == -1)
+			err(13, "%s: fsync", special);
 	}
 	ext2fs_disk_close(&disk);
 	return (0);
