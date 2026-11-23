@@ -531,6 +531,8 @@
         ..
         tunefs
         ..
+        tunefs_ext2fs
+        ..
     ..
     secure
         lib

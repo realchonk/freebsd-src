@@ -8,4 +8,7 @@ MAN=		tunefs_ext2fs.8
 WARNS ?=	3
 MK_WERROR=	no
 
+HAS_TESTS=	yes
+SUBDIR.${MK_TESTS}=	tests
+
 .include <bsd.prog.mk>
