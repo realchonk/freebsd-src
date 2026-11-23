@@ -1,0 +1,185 @@
+.\" Copyright (c) 2026 The FreeBSD Foundation
+.\"
+.\" SPDX-License-Identifier: BSD-2-Clause
+.\"
+.\" This software was developed by Benjamin Stürz <benni@stuerz.xyz>
+.\" under sponsorship from the FreeBSD Foundation.
+.\"
+.Dd November 17, 2026
+.Dt TUNEFS_EXT2FS 8
+.Os
+.Sh NAME
+.Nm tunefs_ext2fs
+.Nd change parameters of an existing ext2 file system
+.Sh SYNOPSIS
+.Nm
+.Op Fl C Ar mount-count
+.Op Fl c Ar max-mount-count
+.Op Fl e Cm continue | remount-ro | panic
+.Op Fl f
+.Op Fl g Ar group
+.Op Fl i Ar interval
+.Op Fl j
+.Op Fl J Ar size=journal-size
+.Op Fl L Ar volume-label
+.Op Fl M Ar last-mounted-directory
+.Op Fl m Ar reserved-percent
+.Op Fl O Ar feature Ns Op , Ns Ar ...
+.Op Fl p
+.Op Fl r Ar reserved-blocks
+.Op Fl T Ar last-check-time
+.Op Fl U Ar uuid
+.Op Fl u Ar user
+.Ar filesys | device
+.Sh DESCRIPTION
+The
+.Nm
+utility changes parameters of an existing ext2, ext3, or ext4 file system.
+It is the ext2 counterpart of
+.Xr tunefs 8 .
+The file system must not be mounted.
+.Pp
+The parameters which are to be changed are indicated by the flags
+given below:
+.Bl -tag -width indent
+.It Fl C Ar mount-count
+Set the number of times the file system has been mounted.
+.It Fl c Ar max-mount-count
+Set the number of mounts after which the file system is checked by
+.Xr fsck_ext2fs 8 .
+A value of 0 disables mount-count checking.
+.It Fl e Cm continue | remount-ro | panic
+Set the behavior when an error is detected:
+.Cm continue
+continues normally,
+.Cm remount-ro
+remounts the file system read-only, and
+.Cm panic
+causes a kernel panic.
+.It Fl f
+Force the operation even when the file system is marked unclean or needs
+journal recovery.
+The file system must still be unmounted.
+.It Fl g Ar group
+Set the group allowed to use the reserved blocks.
+The argument may be a group name or a numeric group ID.
+.It Fl i Ar interval
+Set the interval between file system checks.
+The interval may be followed by
+.Cm d ,
+.Cm m ,
+or
+.Cm w
+to select days, months, or weeks.
+A value of 0 disables interval checking.
+.It Fl j
+Add an internal journal to an ext4 file system.
+Journal creation requires the
+.Dq extent
+feature; plain ext2 and ext3 file systems are not supported.
+The default journal size is 1024 file system blocks.
+.It Fl J Ar size=journal-size
+Set the journal size in megabytes and add a journal, as with
+.Fl j .
+This option currently accepts only the
+.Cm size=
+parameter.
+.It Fl L Ar volume-label
+Set the volume label.
+The label may be at most 15 characters drawn from letters, digits,
+.Sy _
+and
+.Sy - .
+.It Fl M Ar last-mounted-directory
+Set the directory on which the file system was last mounted.
+.It Fl m Ar reserved-percent
+Set the percentage of blocks reserved for the super-user.
+The value must be between 0 and 99.
+.It Fl O Ar feature Ns Op , Ns Ar ...
+Set or clear file system features.
+Prefix a feature with
+.Sy ^
+to clear it.
+The supported features are
+.Cm dir_index ,
+.Cm dir_nlink ,
+.Cm extra_isize ,
+.Cm filetype ,
+.Cm has_journal
+(set only, equivalent to
+.Fl j ) ,
+.Cm huge_file ,
+.Cm large_file ,
+.Cm metadata_csum_seed ,
+.Cm read-only ,
+.Cm resize_inode
+(clear only), and
+.Cm sparse_super
+(set only).
+Structural features such as
+.Cm 64bit ,
+.Cm extent ,
+.Cm flex_bg ,
+.Cm metadata_csum ,
+.Cm mmp ,
+.Cm project ,
+.Cm quota ,
+and
+.Cm uninit_bg
+are not supported.
+After changing
+.Cm dir_index ,
+.Cm filetype ,
+.Cm resize_inode ,
+or
+.Cm sparse_super ,
+run
+.Xr fsck_ext2fs 8
+to repair dependent metadata.
+.It Fl p
+Print the current parameters and exit without changing the file system.
+.It Fl r Ar reserved-blocks
+Set the number of blocks reserved for the super-user.
+This takes precedence over
+.Fl m .
+.It Fl T Ar last-check-time
+Set the time the file system was last checked.
+The argument may be
+.Cm now
+or a date in the
+.Dv YYYYMMDDHHMMSS
+format.
+.It Fl U Ar uuid
+Set the universally unique identifier of the file system.
+The argument may be a UUID,
+.Cm clear ,
+.Cm random ,
+or
+.Cm time .
+On file systems with metadata checksums, the checksum seed is preserved.
+.It Fl u Ar user
+Set the user allowed to use the reserved blocks.
+The argument may be a user name or a numeric user ID.
+.El
+.Pp
+The primary superblock and all backup superblocks are updated.
+The changes are written synchronously before
+.Nm
+exits.
+.Sh EXIT STATUS
+.Ex -std
+.Sh SEE ALSO
+.Xr ext2fs 4 ,
+.Xr dumpfs_ext2fs 8 ,
+.Xr fsck_ext2fs 8 ,
+.Xr newfs_ext2fs 8 ,
+.Xr tunefs 8
+.Sh HISTORY
+The
+.Nm
+utility is currently under development and has not yet been released.
+.Sh AUTHORS
+.An -nosplit
+This software was developed by
+.An Benjamin Stürz Aq Mt benni@stuerz.xyz
+under sponsorship from the FreeBSD Foundation.
